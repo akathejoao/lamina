@@ -12,7 +12,7 @@ import { Button, fieldClass } from "./ui";
 const levels = ["Crítico", "Equilibrado", "Poupador", "Investidor"] as const;
 
 export function ProfileView() {
-  const { state, updateProfile, reset, scope, email, consentAt } = useStore();
+  const { state, updateProfile, reset, scope, email, consentAt, role } = useStore();
   const score = health(state);
   const run = streak(state);
   const goal = state.goals[0];
@@ -26,6 +26,7 @@ export function ProfileView() {
             <Avatar name={state.profile.name} photo={state.profile.photoDataUrl} />
             <div>
               <p className="text-xl">{state.profile.name}</p>
+              {role === "admin" ? <p className="text-xs text-violet-2">Administrador</p> : null}
               <p className="text-sm text-muted">@{state.profile.handle}</p>
             </div>
           </div>
@@ -143,13 +144,21 @@ export function ProfileView() {
             </button>
           ) : null}
         </form>
-        {scope === "conta" ? <AccountPanel email={email} consentAt={consentAt} /> : null}
+        {scope === "conta" ? <AccountPanel email={email} consentAt={consentAt} role={role} /> : null}
       </div>
     </AppFrame>
   );
 }
 
-function AccountPanel({ email, consentAt }: { email: string | null; consentAt: string | null }) {
+function AccountPanel({
+  email,
+  consentAt,
+  role,
+}: {
+  email: string | null;
+  consentAt: string | null;
+  role: "admin" | "user" | null;
+}) {
   const router = useRouter();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -163,8 +172,14 @@ function AccountPanel({ email, consentAt }: { email: string | null; consentAt: s
     <section className="mt-4 rounded-2xl border border-line p-4">
       <p className="kicker">Conta e LGPD</p>
       <p className="mt-2 text-sm text-muted">
-        {email}. Consentimento registrado {when ?? "nesta conta"}, versão dos termos 2026-11-15. A planilha no banco está cifrada com a sua senha.
+        {email}. {role === "admin" ? "Esta conta é a administradora. " : ""}
+        Consentimento registrado {when ?? "nesta conta"}, versão dos termos 2026-11-15. A planilha no banco está cifrada com a sua senha.
       </p>
+      {role === "admin" ? (
+        <a className="mt-3 inline-flex text-sm text-violet-2" href="/app/admin">
+          Administração
+        </a>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-3 text-sm">
         <a className="text-violet-2" href="/api/account/export">
           Exportar meus dados

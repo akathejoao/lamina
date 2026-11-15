@@ -8,7 +8,7 @@ export default function PrivacyPage() {
         Este aviso descreve o tratamento de dados pessoais da Lâmina, nos termos da Lei nº 13.709/2018 (LGPD). Quem opera esta cópia do serviço é o controlador. Se a Lâmina estiver publicada para você por outra pessoa ou empresa, essa pessoa ou empresa é a controladora e deve indicar um canal de contato além das ferramentas da própria conta.
       </p>
       <h2>Quais dados</h2>
-      <p>Conta: nome, e-mail, hash da senha, data do consentimento e a versão dos termos aceitos.</p>
+      <p>Conta: nome, e-mail, hash da senha, data do consentimento, a versão dos termos aceitos e o estado do acesso (cortesia, ativo ou bloqueado). O administrador da Lâmina vê esses dados de cadastro e uma nota interna, se ele escrever. Não vê a planilha.</p>
       <p>
         Planilha: lançamentos, metas, mensagens com o agente e preferências de perfil, inclusive uma foto se você enviar. Esse conjunto é cifrado com uma chave exclusiva da sua conta antes de ser gravado. A chave é embrulhada com a sua senha. O banco guarda o texto cifrado, não os valores em aberto.
       </p>

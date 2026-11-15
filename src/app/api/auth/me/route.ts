@@ -4,8 +4,8 @@ import { readSession } from "@/lib/session";
 export async function GET() {
   const session = await readSession();
   if (!session) return Response.json({ account: null });
-  const rows = await sql<{ email: string; name: string; consent_at: string; terms_version: string }>(
-    `select email, name, consent_at, terms_version from users where id = $1`,
+  const rows = await sql<{ email: string; name: string; consent_at: string; terms_version: string; role: string }>(
+    `select email, name, consent_at, terms_version, role from users where id = $1`,
     [session.userId],
   );
   const user = rows[0];
@@ -16,6 +16,7 @@ export async function GET() {
       name: user.name,
       consentAt: user.consent_at,
       termsVersion: user.terms_version,
+      role: user.role === "admin" ? "admin" : "user",
     },
   });
 }

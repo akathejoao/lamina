@@ -1,3 +1,4 @@
+import { ensureDesignatedAdmin } from "@/lib/admin";
 import { unwrapDek, verifyPassword } from "@/lib/crypto";
 import { sql } from "@/lib/db";
 import { asRecord, cleanEmail, cleanPassword, jsonError, limited, readJson } from "@/lib/guard";
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
   }
   const dek = await unwrapDek(password, user.wrap_salt, user.wrapped_dek);
   if (!dek) return jsonError(401, "E-mail ou senha não conferem.");
+  await ensureDesignatedAdmin(email);
   const response = Response.json({ ok: true });
   response.headers.set("Set-Cookie", sessionCookie(sealSession(user.id, dek), request));
   return response;

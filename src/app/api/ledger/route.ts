@@ -6,13 +6,16 @@ import { readSession, sameOrigin } from "@/lib/session";
 import type { LedgerState } from "@/lib/types";
 
 type LedgerRow = { ciphertext: string };
-type AccountRow = { email: string; consent_at: string; terms_version: string };
+type AccountRow = { email: string; consent_at: string; terms_version: string; role: string; access_status: string };
 
 export async function GET() {
   const session = await readSession();
   if (!session) return jsonError(401, "Entre para abrir a planilha.");
   const ledgers = await sql<LedgerRow>(`select ciphertext from ledgers where user_id = $1`, [session.userId]);
-  const accounts = await sql<AccountRow>(`select email, consent_at, terms_version from users where id = $1`, [session.userId]);
+  const accounts = await sql<AccountRow>(
+    `select email, consent_at, terms_version, role, access_status from users where id = $1`,
+    [session.userId],
+  );
   const row = ledgers[0];
   const account = accounts[0];
   if (!row || !account) return jsonError(404, "Conta não encontrada.");
@@ -29,6 +32,8 @@ export async function GET() {
       email: account.email,
       consentAt: account.consent_at,
       termsVersion: account.terms_version,
+      role: account.role === "admin" ? "admin" : "user",
+      access: account.access_status === "ativo" || account.access_status === "bloqueado" ? account.access_status : "cortesia",
     },
   });
 }

@@ -3,6 +3,7 @@ import { PRIVACY_VERSION, TERMS_VERSION, encryptJson, hashPassword, newDek, wrap
 import { sql } from "@/lib/db";
 import { freshLedger } from "@/lib/fresh";
 import { asRecord, cleanEmail, cleanName, cleanPassword, jsonError, limited, readJson } from "@/lib/guard";
+import { isDesignatedAdmin } from "@/lib/admin";
 import { clientKey, sameOrigin, sealSession, sessionCookie } from "@/lib/session";
 
 export async function POST(request: Request) {
@@ -27,11 +28,12 @@ export async function POST(request: Request) {
   const passwordRecord = await hashPassword(password);
   const id = randomUUID();
   const ledger = encryptJson(dek, freshLedger(name));
+  const role = isDesignatedAdmin(email) ? "admin" : "user";
   try {
     await sql(
-      `insert into users (id, email, name, password_salt, password_hash, wrap_salt, wrapped_dek, terms_version, privacy_version, consent_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
-      [id, email, name, passwordRecord.salt, passwordRecord.hash, wrapped.salt, wrapped.wrapped, TERMS_VERSION, PRIVACY_VERSION],
+      `insert into users (id, email, name, password_salt, password_hash, wrap_salt, wrapped_dek, terms_version, privacy_version, consent_at, role)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), $10)`,
+      [id, email, name, passwordRecord.salt, passwordRecord.hash, wrapped.salt, wrapped.wrapped, TERMS_VERSION, PRIVACY_VERSION, role],
     );
     await sql(`insert into ledgers (user_id, ciphertext) values ($1, $2)`, [id, ledger]);
   } catch (error) {
@@ -39,6 +41,7 @@ export async function POST(request: Request) {
     if (code === "23505" || String(error).toLowerCase().includes("unique")) {
       return jsonError(409, "Já existe uma conta com esse e-mail. Entre com ela.");
     }
+    console.error("register failed", error);
     return jsonError(500, "Não foi possível criar a conta.");
   }
   const response = Response.json({ ok: true });

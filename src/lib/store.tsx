@@ -23,6 +23,8 @@ type Store = {
   state: LedgerState;
   scope: "demo" | "conta";
   email: string | null;
+  role: "admin" | "user" | null;
+  access: "cortesia" | "ativo" | "bloqueado" | null;
   consentAt: string | null;
   saveNote: string | null;
   logout: (() => Promise<void>) | null;
@@ -140,6 +142,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       state,
       scope: "demo",
       email: null,
+      role: null,
+      access: null,
       consentAt: null,
       saveNote: "Demonstração neste navegador",
       logout: null,
@@ -252,7 +256,13 @@ export function useStore(): Store {
 
 export { NOVEMBER };
 
-type AccountInfo = { email: string; consentAt: string; termsVersion: string };
+type AccountInfo = {
+  email: string;
+  consentAt: string;
+  termsVersion: string;
+  role: "admin" | "user";
+  access: "cortesia" | "ativo" | "bloqueado";
+};
 
 let accountLedger: LedgerState | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -315,12 +325,13 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
       state: ledger,
       scope: "conta",
       email: account.email,
+      role: account.role,
+      access: account.access,
       consentAt: account.consentAt,
       saveNote,
       logout: async () => {
         await fetch("/api/auth/logout", { method: "POST" });
         router.push("/");
-        router.refresh();
       },
       addEntry: (sheetId, draft) => write((current) => pushEntry(current, sheetId, draft)),
       removeEntry: (id) => write((current) => ({ ...current, entries: current.entries.filter((entry) => entry.id !== id) })),
@@ -414,7 +425,24 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
   if (!api) {
     return <p className="px-6 py-16 text-sm text-muted">{saveNote}</p>;
   }
-  return <AccountContext.Provider value={api}>{children}</AccountContext.Provider>;
+  const blocked = api.access === "bloqueado" && api.role !== "admin";
+  return <AccountContext.Provider value={api}>{blocked ? <BlockedAccess /> : children}</AccountContext.Provider>;
+}
+
+function BlockedAccess() {
+  const { logout } = useStore();
+  return (
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
+      <p className="kicker">Acesso pausado</p>
+      <h1 className="display mt-3 text-4xl">Esta conta não entra na planilha agora.</h1>
+      <p className="mt-4 text-sm leading-relaxed text-muted">
+        O administrador marcou o acesso como bloqueado. Quando ele voltar para cortesia ou ativo, os lançamentos continuam aqui, cifrados.
+      </p>
+      <button type="button" className="mt-6 text-sm text-violet-2" onClick={() => void logout?.()}>
+        Sair
+      </button>
+    </main>
+  );
 }
 
 function monthName(key: string): string {

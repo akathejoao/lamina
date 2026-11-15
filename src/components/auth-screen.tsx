@@ -33,7 +33,6 @@ export function AuthScreen({ mode }: { mode: "entrar" | "criar" }) {
       return;
     }
     router.push("/app");
-    router.refresh();
   };
 
   return (

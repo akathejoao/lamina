@@ -21,7 +21,7 @@ export default function TermsPage() {
       </p>
       <h2>Uso aceitável</h2>
       <p>
-        Não tente quebrar o acesso de outras contas, sobrecarregar o serviço de propósito, nem usar a Lâmina para fraude. Podemos encerrar uma conta que faça isso. Você pode encerrar a sua quando quiser, em Perfil, com a senha.
+        Não tente quebrar o acesso de outras contas, sobrecarregar o serviço de propósito, nem usar a Lâmina para fraude. Podemos pausar ou encerrar uma conta que faça isso, ou quando o acesso contratado acabar. Você pode encerrar a sua quando quiser, em Perfil, com a senha.
       </p>
       <h2>Disponibilidade</h2>
       <p>

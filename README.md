@@ -20,7 +20,7 @@ Abre em `http://localhost:3847`.
 - `/app/educacao` trilhas curtas
 - `/baixar` instalar como aplicativo no Windows (PWA)
 
-A janela da página inicial é uma demonstração neste navegador. A conta, em Entrar ou Criar conta, grava a planilha cifrada: o banco guarda o texto fechado, e a senha é a chave. Sem `DATABASE_URL`, o desenvolvimento usa um Postgres local em `.data/pglite`. Em Perfil dá para exportar os dados, trocar a senha e apagar a conta.
+A janela da página inicial é uma demonstração neste navegador. A conta, em Entrar ou Criar conta, grava a planilha cifrada: o banco guarda o texto fechado, e a senha é a chave. Sem `DATABASE_URL`, o desenvolvimento usa um Postgres em memória, então as contas somem quando o servidor reinicia. A sessão local, se `SESSION_SECRET` não estiver definida, fica em `.data/session-secret`. Com `DATABASE_URL`, as migrations em `migrations/` sobem no Postgres publicado. Em Perfil dá para exportar os dados, trocar a senha e apagar a conta. A conta `joaopro9678@gmail.com` é a administradora: ela abre a aba Administração, vê quem se cadastrou e marca o acesso como cortesia, ativo ou bloqueado, sem abrir a planilha de ninguém.
 
 ## O que o agente entende
 

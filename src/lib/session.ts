@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { cookies } from "next/headers";
 
 const COOKIE = "lamina_session";
@@ -15,8 +16,30 @@ let memorySecret: string | undefined;
 function secret(): string {
   const configured = process.env.SESSION_SECRET?.trim();
   if (configured) return configured;
-  memorySecret ??= randomBytes(32).toString("base64url");
-  return memorySecret;
+  if (memorySecret) return memorySecret;
+  const path = ".data/session-secret";
+  try {
+    mkdirSync(".data", { recursive: true });
+    const existing = readFileSync(path, "utf8").trim();
+    if (existing) {
+      memorySecret = existing;
+      return memorySecret;
+    }
+  } catch {
+    /* the file is created below */
+  }
+  const created = randomBytes(32).toString("base64url");
+  try {
+    const fd = openSync(path, "wx");
+    writeFileSync(fd, created);
+    closeSync(fd);
+    memorySecret = created;
+    return memorySecret;
+  } catch {
+    const existing = readFileSync(path, "utf8").trim();
+    memorySecret = existing || created;
+    return memorySecret;
+  }
 }
 
 export function sealSession(userId: string, dek: Buffer): string {

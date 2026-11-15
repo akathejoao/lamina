@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { GraduationCap, House, Table2, UserRound } from "lucide-react";
+import { GraduationCap, House, Shield, Table2, UserRound } from "lucide-react";
 import { currentMonthly } from "@/lib/finance";
 import { useStore } from "@/lib/store";
 import { Mark } from "./mark";
@@ -22,7 +22,7 @@ export function AppFrame({
   side?: ReactNode;
 }) {
   const pathname = usePathname();
-  const { state, logout, saveNote, scope } = useStore();
+  const { state, logout, saveNote, scope, role } = useStore();
   const current = currentMonthly(state);
   const [agentOpen, setAgentOpen] = useState(false);
 
@@ -45,6 +45,11 @@ export function AppFrame({
           <RailLink href="/app/perfil" label="Perfil" active={pathname.startsWith("/app/perfil")}>
             <UserRound className="size-5" />
           </RailLink>
+          {role === "admin" ? (
+            <RailLink href="/app/admin" label="Administração" active={pathname.startsWith("/app/admin")}>
+              <Shield className="size-5" />
+            </RailLink>
+          ) : null}
           {logout ? (
             <button type="button" className="mt-auto text-[11px] text-faint hover:text-ink" onClick={() => void logout()}>
               Sair
@@ -77,6 +82,11 @@ export function AppFrame({
         {current ? (
           <Link href={`/app/planilha/${current.id}`} className="flex min-h-14 flex-1 items-center justify-center text-sm text-muted">
             Planilha
+          </Link>
+        ) : null}
+        {role === "admin" ? (
+          <Link href="/app/admin" className="flex min-h-14 flex-1 items-center justify-center text-sm text-muted">
+            Admin
           </Link>
         ) : null}
         {side ? (
