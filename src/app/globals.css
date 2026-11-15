@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-syne), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex), ui-monospace, monospace;
+  --color-canvas: #0c0b10;
+  --color-canvas-2: #121018;
+  --color-surface: #17151f;
+  --color-surface-2: #221f2c;
+  --color-ink: #f6f3fb;
+  --color-muted: #b7aec6;
+  --color-faint: #8d84a0;
+  --color-line: rgb(246 243 251 / 0.1);
+  --color-violet: #7c5cff;
+  --color-violet-2: #c4b6ff;
+  --color-mint: #b6ffd2;
+  --color-coral: #ff8aa0;
+  --color-amber: #ffc56d;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: #7c5cff;
+  color: #f6f3fb;
+}
+
+:focus-visible {
+  outline: 2px solid #c4b6ff;
+  outline-offset: 3px;
+}
+
+button,
+a,
+summary,
+[role="button"] {
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  cursor: text;
+}
+
+.display {
+  font-family: var(--font-display);
+  letter-spacing: -0.045em;
+  line-height: 0.9;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.kicker {
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.grid-fade {
+  background-image:
+    linear-gradient(rgb(246 243 251 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(246 243 251 / 0.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at 50% 20%, #000 20%, transparent 72%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .reveal {
+    animation: none;
+    transition: none;
+  }
+}
