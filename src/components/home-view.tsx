@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SliceChart } from "./slice-chart";
+import { SheetForm } from "./sheet-form";
 import { currentMonthly, health, mathFor, streak, tips } from "@/lib/finance";
-import { formatBRL, formatMonth, monthKey, parseMoney, todayISO } from "@/lib/money";
+import { formatBRL, formatMonth, monthKey, todayISO } from "@/lib/money";
+import { accentOf, ACCENT_COLOR } from "@/lib/sheets";
 import { useStore } from "@/lib/store";
-import { KIND_LABEL, type SheetKind } from "@/lib/types";
-import { AppFrame } from "./app-frame";
-import { Button, Field, Modal, fieldClass } from "./ui";
+import { KIND_LABEL } from "@/lib/types";
+import { SidePortal } from "./app-frame";
+import { Button, Modal } from "./ui";
 
 export function HomeView() {
   const { state, createSheet } = useStore();
@@ -26,8 +28,8 @@ export function HomeView() {
   const [showArchived, setShowArchived] = useState(false);
 
   return (
-    <AppFrame
-      side={
+    <>
+      <SidePortal>
         <aside className="h-full space-y-4 p-4">
           <p className="kicker">Este mês</p>
           <p className="num text-3xl">{numbers ? formatBRL(numbers.free) : "—"}</p>
@@ -57,8 +59,7 @@ export function HomeView() {
             </div>
           ) : null}
         </aside>
-      }
-    >
+      </SidePortal>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
         <p className="kicker">Olá, {state.profile.name.split(" ")[0]}</p>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
@@ -76,13 +77,20 @@ export function HomeView() {
             const shown = sheet.kind === "mensal" ? math.free : (goal?.savedCents ?? math.invested);
             return (
               <li key={sheet.id}>
-                <Link href={`/app/planilha/${sheet.id}`} className="block rounded-2xl border border-line bg-surface px-4 py-4 hover:border-violet-2">
+                <Link href={`/app/planilha/${sheet.id}`} className="tint relative block overflow-hidden rounded-2xl border border-line bg-surface px-4 py-4 pl-5 hover:border-violet-2">
+                  <span className="absolute inset-y-3 left-0 w-1 rounded-full" style={{ background: ACCENT_COLOR[accentOf(sheet)] }} />
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="kicker">{KIND_LABEL[sheet.kind]}</p>
                       <p className="mt-1 text-xl">{sheet.name}</p>
                       <p className="mt-1 text-sm text-muted">
-                        {sheet.month ? formatMonth(sheet.month) : sheet.deadline ? `até ${sheet.deadline.split("-").reverse().join("/")}` : "acompanhamento contínuo"}
+                        {sheet.note
+                          ? sheet.note
+                          : sheet.month
+                            ? formatMonth(sheet.month)
+                            : sheet.deadline
+                              ? `até ${sheet.deadline.split("-").reverse().join("/")}`
+                              : "acompanhamento contínuo"}
                       </p>
                     </div>
                     <p className="num text-right text-lg">{formatBRL(shown)}</p>
@@ -109,95 +117,17 @@ export function HomeView() {
           </ul>
         ) : null}
       </div>
-      <NewSheet
-        open={open}
-        onClose={() => setOpen(false)}
-        onCreate={(draft) => {
-          const id = createSheet(draft);
-          setOpen(false);
-          router.push(`/app/planilha/${id}`);
-        }}
-        defaultMonth={monthKey(now)}
-      />
-    </AppFrame>
-  );
-}
-
-function NewSheet({
-  open,
-  onClose,
-  onCreate,
-  defaultMonth,
-}: {
-  open: boolean;
-  onClose: () => void;
-  defaultMonth: string;
-  onCreate: (draft: {
-    name: string;
-    kind: SheetKind;
-    month: string | null;
-    deadline: string | null;
-    targetCents: number | null;
-  }) => void;
-}) {
-  const [kind, setKind] = useState<SheetKind>("mensal");
-  const [name, setName] = useState("");
-  const [month, setMonth] = useState(defaultMonth);
-  const [deadline, setDeadline] = useState("");
-  const [target, setTarget] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!name.trim()) {
-      setError("Dê um nome que você reconheça daqui a um mês.");
-      return;
-    }
-    const targetCents = target ? parseMoney(target) : null;
-    onCreate({
-      name: name.trim(),
-      kind,
-      month: kind === "mensal" ? month : null,
-      deadline: kind === "meta" ? deadline || null : null,
-      targetCents: kind === "mensal" ? null : targetCents,
-    });
-    setName("");
-    setError(null);
-  };
-
-  return (
-    <Modal open={open} title="Nova planilha" onClose={onClose}>
-      <form onSubmit={submit} className="grid gap-3">
-        <Field label="Tipo">
-          <select className={fieldClass} value={kind} onChange={(event) => setKind(event.target.value as SheetKind)}>
-            <option value="mensal">Ciclo mensal — fecha ao virar o mês</option>
-            <option value="meta">Meta com prazo</option>
-            <option value="continuo">Visão contínua / patrimônio</option>
-          </select>
-        </Field>
-        <Field label="Nome">
-          <input className={fieldClass} value={name} onChange={(event) => setName(event.target.value)} placeholder="Novembro, Japão, Reserva" />
-        </Field>
-        {kind === "mensal" ? (
-          <Field label="Mês">
-            <input className={fieldClass} type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
-          </Field>
-        ) : null}
-        {kind === "meta" ? (
-          <Field label="Prazo">
-            <input className={fieldClass} type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} />
-          </Field>
-        ) : null}
-        {kind !== "mensal" ? (
-          <Field label="Valor da meta">
-            <input className={fieldClass} value={target} onChange={(event) => setTarget(event.target.value)} placeholder="18000" />
-          </Field>
-        ) : null}
-        {error ? <p className="text-sm text-coral">{error}</p> : null}
-        <div className="flex justify-end">
-          <Button type="submit">Criar</Button>
-        </div>
-      </form>
-    </Modal>
+      <Modal open={open} title="Nova planilha" onClose={() => setOpen(false)} wide>
+        <SheetForm
+          mode="create"
+          defaultMonth={monthKey(now)}
+          onSubmit={(draft) => {
+            const id = createSheet(draft);
+            setOpen(false);
+            router.push(`/app/planilha/${id}`);
+          }}
+        />
+      </Modal>
+    </>
   );
 }

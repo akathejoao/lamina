@@ -4,8 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, u
 import { useRouter } from "next/navigation";
 import { interpret } from "./agent";
 import { NOVEMBER, seedState } from "./seed";
+import { sheetFromDraft, type SheetDraft } from "./sheets";
 import { uid } from "./money";
-import type { Entry, EntryType, LedgerState, Profile, Sheet, SheetKind } from "./types";
+import type { Entry, EntryType, LedgerState, Profile } from "./types";
 
 const KEY = "lamina-ledger-v1";
 
@@ -30,13 +31,8 @@ type Store = {
   logout: (() => Promise<void>) | null;
   addEntry: (sheetId: string, draft: DraftEntry) => void;
   removeEntry: (id: string) => void;
-  createSheet: (draft: {
-    name: string;
-    kind: SheetKind;
-    month: string | null;
-    deadline: string | null;
-    targetCents: number | null;
-  }) => string;
+  createSheet: (draft: SheetDraft) => string;
+  updateSheet: (id: string, draft: SheetDraft) => void;
   archiveSheet: (id: string) => void;
   duplicateMonth: (id: string) => string | null;
   clearSheet: (id: string) => void;
@@ -155,18 +151,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         })),
       createSheet: (draft) => {
         const id = uid();
-        const sheet: Sheet = {
-          id,
-          name: draft.name,
-          kind: draft.kind,
-          month: draft.month,
-          deadline: draft.deadline,
-          targetCents: draft.targetCents,
-          archived: false,
-        };
-        update((current) => ({ ...current, sheets: [...current.sheets, sheet] }));
+        update((current) => ({ ...current, sheets: [...current.sheets, sheetFromDraft(id, draft)] }));
         return id;
       },
+      updateSheet: (id, draft) =>
+        update((current) => ({
+          ...current,
+          sheets: current.sheets.map((sheet) => (sheet.id === id ? sheetFromDraft(id, draft, sheet.archived) : sheet)),
+        })),
       archiveSheet: (id) =>
         update((current) => ({
           ...current,
@@ -191,6 +183,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sheets: [
             ...latest.sheets,
             {
+              ...source,
               id: newId,
               name: monthName(key),
               kind: "mensal",
@@ -337,23 +330,14 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
       removeEntry: (id) => write((current) => ({ ...current, entries: current.entries.filter((entry) => entry.id !== id) })),
       createSheet: (draft) => {
         const id = uid();
-        write((current) => ({
-          ...current,
-          sheets: [
-            ...current.sheets,
-            {
-              id,
-              name: draft.name,
-              kind: draft.kind,
-              month: draft.month,
-              deadline: draft.deadline,
-              targetCents: draft.targetCents,
-              archived: false,
-            },
-          ],
-        }));
+        write((current) => ({ ...current, sheets: [...current.sheets, sheetFromDraft(id, draft)] }));
         return id;
       },
+      updateSheet: (id, draft) =>
+        write((current) => ({
+          ...current,
+          sheets: current.sheets.map((sheet) => (sheet.id === id ? sheetFromDraft(id, draft, sheet.archived) : sheet)),
+        })),
       archiveSheet: (id) =>
         write((current) => ({
           ...current,
@@ -377,6 +361,7 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
           sheets: [
             ...latest.sheets,
             {
+              ...source,
               id: newId,
               name: monthName(key),
               kind: "mensal",

@@ -6,7 +6,6 @@ import { health, patrimony, streak } from "@/lib/finance";
 import { formatBRL } from "@/lib/money";
 import { useStore } from "@/lib/store";
 import type { Banner, Tone } from "@/lib/types";
-import { AppFrame } from "./app-frame";
 import { Button, fieldClass } from "./ui";
 
 const levels = ["Crítico", "Equilibrado", "Poupador", "Investidor"] as const;
@@ -19,8 +18,7 @@ export function ProfileView() {
   const index = levels.indexOf(score.level);
 
   return (
-    <AppFrame>
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
         <div className={`relative h-40 overflow-hidden rounded-3xl border border-line ${bannerClass(state.profile.banner)}`}>
           <div className="absolute bottom-4 left-4 flex items-end gap-3">
             <Avatar name={state.profile.name} photo={state.profile.photoDataUrl} />
@@ -146,7 +144,6 @@ export function ProfileView() {
         </form>
         {scope === "conta" ? <AccountPanel email={email} consentAt={consentAt} role={role} /> : null}
       </div>
-    </AppFrame>
   );
 }
 

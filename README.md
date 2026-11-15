@@ -1,6 +1,6 @@
 # Lâmina
 
-Planilha financeira no centro da tela e um agente ao lado. O mês fecha sozinho, a meta tem prazo, a reserva fica numa visão contínua. Dá para lançar um gasto digitando “Gastei R$ 85 no mercado hoje”.
+Planilha financeira no centro da tela e um agente ao lado. O mês fecha sozinho, a meta tem prazo, a reserva fica numa visão contínua. Em Nova planilha dá para partir de um modelo, nomear as categorias, escolher a cor e ajustar a divisão. Dá para lançar um gasto digitando “Gastei R$ 85 no mercado hoje”.
 
 A página inicial segue o ritmo de seções do Discord: título grande, dois botões e a janela do produto. A cor e o acabamento vêm do Misato: fundo quase preto, superfície um tom acima, borda translúcida e um violeta só nos botões de ação.
 

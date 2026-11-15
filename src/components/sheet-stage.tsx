@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, type CSSProperties } from "react";
 import { SliceChart } from "./slice-chart";
+import { SheetForm } from "./sheet-form";
 import { mathFor } from "@/lib/finance";
-import { formatBRL, formatDay, parseMoney, todayISO } from "@/lib/money";
+import { formatBRL, formatDay, monthKey, parseMoney, todayISO } from "@/lib/money";
+import { ACCENT_COLOR, accentOf, categoriesOf, draftFromSheet, SLICE_COLOR, splitOf } from "@/lib/sheets";
 import { useStore } from "@/lib/store";
 import { ENTRY_LABEL, KIND_LABEL, type EntryType } from "@/lib/types";
 import { Button, Field, Modal, fieldClass } from "./ui";
@@ -11,10 +13,11 @@ import { Button, Field, Modal, fieldClass } from "./ui";
 const types: EntryType[] = ["receita", "fixo", "variavel", "assinatura", "investimento"];
 
 export function SheetStage({ sheetId, compact = false }: { sheetId: string; compact?: boolean }) {
-  const { state, addEntry, removeEntry, archiveSheet, duplicateMonth, clearSheet, importRows } = useStore();
+  const { state, addEntry, removeEntry, archiveSheet, duplicateMonth, clearSheet, importRows, updateSheet } = useStore();
   const sheet = state.sheets.find((item) => item.id === sheetId);
   const numbers = useMemo(() => (sheet ? mathFor(state, sheet) : null), [sheet, state]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState<"limpar" | "arquivar" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -25,18 +28,48 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
   const entries = state.entries
     .filter((entry) => entry.sheetId === sheet.id)
     .sort((a, b) => b.date.localeCompare(a.date));
+  const split = splitOf(sheet);
+  const accent = ACCENT_COLOR[accentOf(sheet)];
+  const splitBase = numbers.income > 0 ? numbers.income : numbers.essenciais + numbers.estilo + numbers.futuro;
+  const categories = categoriesOf(sheet);
+  const saved = numbers.invested;
+  const target = sheet.targetCents ?? 0;
 
   return (
     <section className="flex w-full min-w-0 max-w-full flex-col">
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 py-4">
-        <div>
+        <div className="min-w-0">
           <p className="kicker">{KIND_LABEL[sheet.kind]}</p>
           <h1 className="display mt-2 text-3xl sm:text-4xl">{sheet.name}</h1>
+          {sheet.note ? <p className="mt-2 max-w-xl text-sm text-muted">{sheet.note}</p> : null}
           {numbers.closed ? <p className="mt-2 text-sm text-amber">Ciclo fechado. O balanço deste mês já virou.</p> : null}
+          {target > 0 ? (
+            <div className="mt-3 max-w-xs">
+              <p className="text-sm text-muted">
+                {formatBRL(saved)} de {formatBRL(target)}
+              </p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-canvas">
+                <div className="bar-draw h-full rounded-full" style={{ "--scale": String(Math.min(1, saved / target)), background: accent } as CSSProperties} />
+              </div>
+            </div>
+          ) : null}
+          {Array.isArray(sheet.categories) && sheet.categories.length > 0 ? (
+            <ul className="mt-3 flex flex-wrap gap-1.5">
+              {sheet.categories.map((item) => (
+                <li key={item.name} className="inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+                  <span className="size-1.5 rounded-full" style={{ background: SLICE_COLOR[item.bucket] }} />
+                  {item.name}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => setOpen(true)}>
             Novo lançamento
+          </Button>
+          <Button type="button" tone="ghost" onClick={() => setEditing(true)}>
+            Personalizar
           </Button>
           <label className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line px-4 text-sm hover:border-violet-2">
             Importar CSV
@@ -92,16 +125,18 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
         <div className="rounded-2xl border border-line bg-surface p-4">
           <p className="kicker">Divisão do mês</p>
           <div className="mt-4 space-y-3">
-            <Split label="Essenciais" actual={numbers.essenciais} income={numbers.income} target={0.5} />
-            <Split label="Estilo de vida" actual={numbers.estilo} income={numbers.income} target={0.3} />
-            <Split label="Futuro" actual={numbers.futuro} income={numbers.income} target={0.2} />
+            <Split label="Essenciais" actual={numbers.essenciais} income={splitBase} target={split.essenciais / 100} accent={accent} />
+            <Split label="Estilo de vida" actual={numbers.estilo} income={splitBase} target={split.estilo / 100} accent={accent} />
+            <Split label="Futuro" actual={numbers.futuro} income={splitBase} target={split.futuro / 100} accent={accent} />
           </div>
           <p className="mt-3 text-xs text-faint">
-            A marca fina é a meta 50/30/20. A barra é o que já saiu de {formatBRL(numbers.income || 0)}.
+            {numbers.income > 0
+              ? `A marca fina é a divisão que você escolheu, ${split.essenciais}/${split.estilo}/${split.futuro}. A barra é o que já saiu de ${formatBRL(numbers.income)}.`
+              : `A marca fina continua sendo ${split.essenciais}/${split.estilo}/${split.futuro}. Sem entradas, a barra mostra só a proporção do que saiu.`}
           </p>
         </div>
         <SliceChart essenciais={numbers.essenciais} estilo={numbers.estilo} futuro={numbers.futuro} />
-        <CategoryBars items={numbers.byCategory.slice(0, 6)} />
+        <CategoryBars items={numbers.byCategory.slice(0, 6)} accent={accent} />
       </div>
 
       <div className={`w-full min-w-0 max-w-full px-4 pb-6 ${compact ? "max-h-80 overflow-y-auto" : ""}`}>
@@ -186,12 +221,24 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
 
       <EntryDialog
         open={open}
+        categories={categories.map((item) => item.name)}
         onClose={() => setOpen(false)}
         onSave={(draft) => {
           addEntry(sheet.id, draft);
           setOpen(false);
         }}
       />
+      <Modal open={editing} title="Personalizar planilha" onClose={() => setEditing(false)} wide>
+        <SheetForm
+          mode="edit"
+          defaultMonth={sheet.month ?? monthKey(todayISO())}
+          initial={draftFromSheet(sheet, sheet.month ?? monthKey(todayISO()))}
+          onSubmit={(draft) => {
+            updateSheet(sheet.id, draft);
+            setEditing(false);
+          }}
+        />
+      </Modal>
       <Modal open={confirm !== null} title={confirm === "limpar" ? "Limpar lançamentos?" : "Arquivar planilha?"} onClose={() => setConfirm(null)}>
         <p className="text-sm leading-relaxed text-muted">
           {confirm === "limpar"
@@ -218,14 +265,14 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
   );
 }
 
-function CategoryBars({ items }: { items: { category: string; cents: number }[] }) {
+function CategoryBars({ items, accent }: { items: { category: string; cents: number }[]; accent: string }) {
   const max = Math.max(...items.map((item) => item.cents), 1);
   return (
     <div className="rounded-2xl border border-line bg-surface p-4">
       <p className="kicker">Por categoria</p>
       {items.length === 0 ? <p className="mt-4 text-sm text-muted">Sem gastos lançados.</p> : null}
       <div className="mt-4 flex h-28 items-end gap-2">
-        {items.map((item) => (
+        {items.map((item, index) => (
           <button
             key={item.category}
             type="button"
@@ -234,8 +281,8 @@ function CategoryBars({ items }: { items: { category: string; cents: number }[] 
             className="flex h-full min-w-0 flex-1 items-end"
           >
             <span
-              className="block w-full rounded-t-md bg-violet"
-              style={{ height: `${Math.max(12, Math.round((item.cents / max) * 100))}%` }}
+              className="col-draw block w-full rounded-t-md"
+              style={{ "--scale": String(Math.max(0.08, item.cents / max)), background: accent, animationDelay: `${index * 40}ms` } as CSSProperties}
             />
           </button>
         ))}
@@ -265,14 +312,16 @@ function Split({
   actual,
   income,
   target,
+  accent,
 }: {
   label: string;
   actual: number;
   income: number;
   target: number;
+  accent: string;
 }) {
   const ratio = income > 0 ? actual / income : 0;
-  const width = Math.min(100, ratio * 100);
+  const scale = Math.min(1, ratio);
   return (
     <div>
       <div className="mb-1 flex justify-between text-sm">
@@ -282,8 +331,10 @@ function Split({
         </span>
       </div>
       <div className="relative h-2 rounded-full bg-canvas">
-        <div className="h-2 rounded-full bg-violet" style={{ width: `${width}%` }} />
-        <span className="absolute top-[-3px] h-3.5 w-px bg-ink" style={{ left: `${target * 100}%` }} />
+        <div className="absolute inset-0 overflow-hidden rounded-full">
+          <div className="bar-draw h-2 rounded-full" style={{ "--scale": String(scale), background: accent } as CSSProperties} />
+        </div>
+        <span className="absolute top-[-3px] h-3.5 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} />
       </div>
     </div>
   );
@@ -297,10 +348,12 @@ function Tag({ type }: { type: EntryType }) {
 
 function EntryDialog({
   open,
+  categories,
   onClose,
   onSave,
 }: {
   open: boolean;
+  categories: string[];
   onClose: () => void;
   onSave: (draft: {
     type: EntryType;
@@ -314,7 +367,7 @@ function EntryDialog({
 }) {
   const [type, setType] = useState<EntryType>("variavel");
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("Mercado");
+  const [category, setCategory] = useState(categories[0] ?? "Mercado");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
   const [due, setDue] = useState("");
@@ -363,6 +416,21 @@ function EntryDialog({
             <input className={fieldClass} inputMode="decimal" placeholder="85,00" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </Field>
           <Field label="Categoria">
+            {categories.length > 0 ? (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {categories.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    aria-pressed={category === item}
+                    className={`rounded-full border px-2 py-1 text-xs ${category === item ? "border-violet text-ink" : "border-line text-muted"}`}
+                    onClick={() => setCategory(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <input className={fieldClass} value={category} onChange={(event) => setCategory(event.target.value)} />
           </Field>
         </div>

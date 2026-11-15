@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AppFrame } from "@/components/app-frame";
 import { useStore } from "@/lib/store";
 import { fieldClass } from "@/components/ui";
 
@@ -93,8 +92,7 @@ export default function AdminPage() {
   };
 
   return (
-    <AppFrame>
-      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
         <p className="kicker">Administração</p>
         <h1 className="display mt-3 text-4xl sm:text-5xl">Quem entra na Lâmina</h1>
         {role !== "admin" ? (
@@ -181,7 +179,6 @@ export default function AdminPage() {
           </>
         )}
       </div>
-    </AppFrame>
   );
 }
 

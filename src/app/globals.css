@@ -78,12 +78,133 @@ textarea {
   mask-image: radial-gradient(ellipse at 50% 20%, #000 20%, transparent 72%);
 }
 
+.arc-draw {
+  stroke-dashoffset: var(--to);
+}
+
+.bar-draw {
+  transform: scaleX(var(--scale));
+  transform-origin: left center;
+}
+
+.col-draw {
+  height: 100%;
+  transform: scaleY(var(--scale));
+  transform-origin: center bottom;
+}
+
+.route-bar {
+  transform-origin: left center;
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .press {
+    transition:
+      transform 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .press:active {
+    transform: scale(0.98);
+  }
+
+  .tint {
+    transition:
+      background-color 150ms ease,
+      color 150ms ease,
+      border-color 150ms ease;
+  }
+
+  .route-in {
+    animation: rise-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+
+  .route-bar {
+    animation: route-bar 700ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+
+  .arc-draw {
+    animation: arc-draw 640ms cubic-bezier(0.23, 1, 0.32, 1) both;
+    transition:
+      opacity 180ms ease,
+      stroke-width 180ms ease;
+  }
+
+  .bar-draw {
+    animation: bar-draw 520ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+
+  .col-draw {
+    animation: col-draw 520ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes route-bar {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes arc-draw {
+  from {
+    stroke-dashoffset: var(--from);
+  }
+
+  to {
+    stroke-dashoffset: var(--to);
+  }
+}
+
+@keyframes bar-draw {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(var(--scale));
+  }
+}
+
+@keyframes col-draw {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(var(--scale));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
 
-  .reveal {
+  .reveal,
+  .route-in,
+  .route-bar,
+  .arc-draw,
+  .bar-draw,
+  .col-draw,
+  .press,
+  .tint {
     animation: none;
     transition: none;
   }

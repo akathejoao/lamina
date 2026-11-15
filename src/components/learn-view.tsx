@@ -2,15 +2,12 @@
 
 import { useState } from "react";
 import { trails } from "@/lib/learn";
-import { AppFrame } from "./app-frame";
-
 export function LearnView() {
   const [open, setOpen] = useState(trails[0].id);
   const current = trails.find((trail) => trail.id === open) ?? trails[0];
 
   return (
-    <AppFrame>
-      <div className="mx-auto grid max-w-5xl gap-8 px-4 py-8 md:grid-cols-[240px_1fr] sm:px-8">
+    <div className="mx-auto grid max-w-5xl gap-8 px-4 py-8 md:grid-cols-[240px_1fr] sm:px-8">
         <div>
           <p className="kicker">Trilhas</p>
           <h1 className="display mt-3 text-4xl">Pílulas curtas</h1>
@@ -41,6 +38,5 @@ export function LearnView() {
           </ol>
         </article>
       </div>
-    </AppFrame>
   );
 }

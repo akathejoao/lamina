@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { formatBRL } from "@/lib/money";
 
 const slices = [
@@ -38,12 +38,13 @@ export function SliceChart({
         <div className="mt-4 flex flex-col items-center gap-4 sm:flex-row">
           <svg viewBox="0 0 120 120" className="size-36 shrink-0" role="img" aria-label="Gráfico das fatias essenciais, estilo de vida e futuro">
             <g transform="rotate(-90 60 60)">
-              {arcs.map((slice) => {
+              {arcs.map((slice, index) => {
                 const dash = `${slice.length} ${circumference - slice.length}`;
                 const selected = active === null || active === slice.key;
                 return (
                   <circle
                     key={slice.key}
+                    className="arc-draw"
                     cx="60"
                     cy="60"
                     r={radius}
@@ -51,8 +52,14 @@ export function SliceChart({
                     stroke={slice.color}
                     strokeWidth={active === slice.key ? 16 : 12}
                     strokeDasharray={dash}
-                    strokeDashoffset={-slice.offset}
-                    opacity={selected ? 1 : 0.35}
+                    style={
+                      {
+                        "--from": -(slice.offset + slice.length),
+                        "--to": -slice.offset,
+                        animationDelay: `${index * 80}ms`,
+                        opacity: selected ? 1 : 0.35,
+                      } as CSSProperties
+                    }
                   />
                 );
               })}

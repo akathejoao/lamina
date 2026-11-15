@@ -1,4 +1,5 @@
 import { daysLeftInMonth, monthKey, todayISO } from "./money";
+import { categoryBucket } from "./sheets";
 import type { Entry, EntryType, Goal, LedgerState, Sheet } from "./types";
 
 const ESSENTIAL = new Set([
@@ -35,8 +36,10 @@ export function sheetEntries(state: LedgerState, sheetId: string): Entry[] {
     .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
 }
 
-export function bucketOf(entry: Entry): Bucket | null {
+export function bucketOf(entry: Entry, sheet?: Sheet): Bucket | null {
   if (entry.type === "receita") return null;
+  const chosen = sheet ? categoryBucket(sheet, entry.category) : null;
+  if (chosen) return chosen;
   if (entry.type === "investimento") return "futuro";
   if (ESSENTIAL.has(entry.category)) return "essenciais";
   return "estilo";
@@ -47,8 +50,8 @@ export function mathFor(state: LedgerState, sheet: Sheet, now = todayISO()): She
   const sum = (list: Entry[]) => list.reduce((total, entry) => total + entry.cents, 0);
   const income = sum(entries.filter((entry) => entry.type === "receita"));
   const invested = sum(entries.filter((entry) => entry.type === "investimento"));
-  const essenciais = sum(entries.filter((entry) => bucketOf(entry) === "essenciais"));
-  const estilo = sum(entries.filter((entry) => bucketOf(entry) === "estilo"));
+  const essenciais = sum(entries.filter((entry) => bucketOf(entry, sheet) === "essenciais"));
+  const estilo = sum(entries.filter((entry) => bucketOf(entry, sheet) === "estilo"));
   const futuro = invested;
   const burn = essenciais + estilo;
   const free = income - burn - invested;

@@ -1,5 +1,20 @@
 export type SheetKind = "mensal" | "meta" | "continuo";
 
+export type SliceKey = "essenciais" | "estilo" | "futuro";
+
+export type SheetAccent = "violeta" | "menta" | "coral" | "ambar";
+
+export type SheetCategory = {
+  name: string;
+  bucket: SliceKey;
+};
+
+export type SheetSplit = {
+  essenciais: number;
+  estilo: number;
+  futuro: number;
+};
+
 export type EntryType =
   | "receita"
   | "fixo"
@@ -27,6 +42,10 @@ export type Sheet = {
   deadline: string | null;
   targetCents: number | null;
   archived: boolean;
+  note?: string;
+  accent?: SheetAccent;
+  categories?: SheetCategory[];
+  split?: SheetSplit;
 };
 
 export type Goal = {
