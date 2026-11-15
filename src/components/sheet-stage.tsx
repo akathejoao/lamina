@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { SliceChart } from "./slice-chart";
 import { mathFor } from "@/lib/finance";
 import { formatBRL, formatDay, parseMoney, todayISO } from "@/lib/money";
 import { useStore } from "@/lib/store";
@@ -87,7 +88,7 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
         <Stat label="Livre" value={formatBRL(numbers.free)} tone="text-ink" />
       </div>
 
-      <div className="grid gap-4 px-4 pb-4 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-4 px-4 pb-4 lg:grid-cols-[1.1fr_0.9fr_1fr]">
         <div className="rounded-2xl border border-line bg-surface p-4">
           <p className="kicker">Divisão do mês</p>
           <div className="mt-4 space-y-3">
@@ -99,6 +100,7 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
             A marca fina é a meta 50/30/20. A barra é o que já saiu de {formatBRL(numbers.income || 0)}.
           </p>
         </div>
+        <SliceChart essenciais={numbers.essenciais} estilo={numbers.estilo} futuro={numbers.futuro} />
         <CategoryBars items={numbers.byCategory.slice(0, 6)} />
       </div>
 

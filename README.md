@@ -20,7 +20,7 @@ Abre em `http://localhost:3847`.
 - `/app/educacao` trilhas curtas
 - `/baixar` instalar como aplicativo no Windows (PWA)
 
-Os dados ficam neste navegador. Em Perfil, “Restaurar o exemplo da Marina” volta ao cenário inicial.
+A janela da página inicial é uma demonstração neste navegador. A conta, em Entrar ou Criar conta, grava a planilha cifrada: o banco guarda o texto fechado, e a senha é a chave. Sem `DATABASE_URL`, o desenvolvimento usa um Postgres local em `.data/pglite`. Em Perfil dá para exportar os dados, trocar a senha e apagar a conta.
 
 ## O que o agente entende
 

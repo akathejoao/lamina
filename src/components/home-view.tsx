@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SliceChart } from "./slice-chart";
 import { currentMonthly, health, mathFor, streak, tips } from "@/lib/finance";
 import { formatBRL, formatMonth, monthKey, parseMoney, todayISO } from "@/lib/money";
 import { useStore } from "@/lib/store";
@@ -31,6 +32,7 @@ export function HomeView() {
           <p className="kicker">Este mês</p>
           <p className="num text-3xl">{numbers ? formatBRL(numbers.free) : "—"}</p>
           <p className="text-sm text-muted">livre em {current?.name ?? "nenhum ciclo aberto"}</p>
+          {numbers ? <SliceChart essenciais={numbers.essenciais} estilo={numbers.estilo} futuro={numbers.futuro} /> : null}
           <div className="rounded-2xl border border-line bg-surface p-3">
             <p className="kicker">Saúde</p>
             <p className="mt-2 text-lg">{score.level}</p>

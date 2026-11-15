@@ -107,7 +107,9 @@ export function Landing() {
               </div>
             </div>
           </div>
-          <p className="mt-3 text-sm text-faint">A janela já grava neste navegador. O que você lançar aqui aparece no app.</p>
+          <p className="mt-3 text-sm text-faint">
+            Esta janela é uma demonstração neste navegador. A conta guarda a planilha cifrada, com o nome e o e-mail separados dos números.
+          </p>
         </section>
 
         <section id="ciclos" className="border-t border-line">
@@ -213,8 +215,8 @@ export function Landing() {
             <p className="mt-3 text-sm text-faint">Planilha no palco. Agente na lateral.</p>
           </div>
           <FooterCol title="Produto" links={[["Ciclos", "/#ciclos"], ["Agente", "/#agente"], ["Divisão", "/#divisao"]]} />
-          <FooterCol title="App" links={[["Início", "/app"], ["Perfil", "/app/perfil"], ["Aprender", "/app/educacao"]]} />
-          <FooterCol title="Baixar" links={[["Windows / PWA", "/baixar"], ["Navegador", "/app"]]} />
+          <FooterCol title="App" links={[["Início", "/app"], ["Perfil", "/app/perfil"], ["Aprender", "/app/educacao"], ["Windows", "/baixar"]]} />
+          <FooterCol title="Conta" links={[["Entrar", "/entrar"], ["Criar conta", "/criar-conta"], ["Termos", "/termos"], ["Privacidade", "/privacidade"]]} />
         </div>
       </footer>
     </div>

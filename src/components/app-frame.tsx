@@ -22,7 +22,7 @@ export function AppFrame({
   side?: ReactNode;
 }) {
   const pathname = usePathname();
-  const { state } = useStore();
+  const { state, logout, saveNote, scope } = useStore();
   const current = currentMonthly(state);
   const [agentOpen, setAgentOpen] = useState(false);
 
@@ -45,9 +45,17 @@ export function AppFrame({
           <RailLink href="/app/perfil" label="Perfil" active={pathname.startsWith("/app/perfil")}>
             <UserRound className="size-5" />
           </RailLink>
+          {logout ? (
+            <button type="button" className="mt-auto text-[11px] text-faint hover:text-ink" onClick={() => void logout()}>
+              Sair
+            </button>
+          ) : null}
         </nav>
         <div className="flex min-w-0 flex-1 flex-col md:flex-row">
-          <div className="min-w-0 flex-1 pb-24 md:pb-0">{children}</div>
+          <div className="min-w-0 flex-1 pb-24 md:pb-0">
+            {scope === "conta" ? <p className="px-4 pt-3 text-xs text-faint">{saveNote}</p> : null}
+            {children}
+          </div>
           {side ? (
             <div className={`${agentOpen ? "fixed inset-0 z-40 flex md:static md:inset-auto" : "hidden md:flex"} md:w-[340px] md:shrink-0 md:border-l md:border-line`}>
               <div className="flex w-full flex-col bg-canvas">

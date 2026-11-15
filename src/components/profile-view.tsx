@@ -1,16 +1,18 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { health, patrimony, streak } from "@/lib/finance";
 import { formatBRL } from "@/lib/money";
 import { useStore } from "@/lib/store";
 import type { Banner, Tone } from "@/lib/types";
 import { AppFrame } from "./app-frame";
-import { fieldClass } from "./ui";
+import { Button, fieldClass } from "./ui";
 
 const levels = ["Crítico", "Equilibrado", "Poupador", "Investidor"] as const;
 
 export function ProfileView() {
-  const { state, updateProfile, reset } = useStore();
+  const { state, updateProfile, reset, scope, email, consentAt } = useStore();
   const score = health(state);
   const run = streak(state);
   const goal = state.goals[0];
@@ -135,12 +137,94 @@ export function ProfileView() {
             />
             Mostrar a soma das metas
           </label>
-          <button type="button" className="justify-self-start text-sm text-faint hover:text-coral" onClick={() => reset()}>
-            Restaurar o exemplo da Marina
-          </button>
+          {scope === "demo" ? (
+            <button type="button" className="justify-self-start text-sm text-faint hover:text-coral" onClick={() => reset()}>
+              Restaurar o exemplo da Marina
+            </button>
+          ) : null}
         </form>
+        {scope === "conta" ? <AccountPanel email={email} consentAt={consentAt} /> : null}
       </div>
     </AppFrame>
+  );
+}
+
+function AccountPanel({ email, consentAt }: { email: string | null; consentAt: string | null }) {
+  const router = useRouter();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [erase, setErase] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const when = consentAt
+    ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeZone: "America/Sao_Paulo" }).format(new Date(consentAt))
+    : null;
+
+  return (
+    <section className="mt-4 rounded-2xl border border-line p-4">
+      <p className="kicker">Conta e LGPD</p>
+      <p className="mt-2 text-sm text-muted">
+        {email}. Consentimento registrado {when ?? "nesta conta"}, versão dos termos 2026-11-15. A planilha no banco está cifrada com a sua senha.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3 text-sm">
+        <a className="text-violet-2" href="/api/account/export">
+          Exportar meus dados
+        </a>
+        <a className="text-violet-2" href="/privacidade">
+          Aviso de privacidade
+        </a>
+        <a className="text-violet-2" href="/termos">
+          Termos
+        </a>
+      </div>
+      <form
+        className="mt-4 grid gap-2"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const response = await fetch("/api/account/password", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ current, next }),
+          });
+          const body = (await response.json().catch(() => null)) as { error?: string } | null;
+          setNote(response.ok ? "Senha trocada. A chave da planilha foi reembrulhada." : (body?.error ?? "Não trocou a senha."));
+          if (response.ok) {
+            setCurrent("");
+            setNext("");
+          }
+        }}
+      >
+        <p className="text-sm">Trocar senha</p>
+        <input className={fieldClass} type="password" autoComplete="current-password" placeholder="Senha atual" value={current} onChange={(event) => setCurrent(event.target.value)} />
+        <input className={fieldClass} type="password" autoComplete="new-password" placeholder="Nova senha, mínimo 10" value={next} onChange={(event) => setNext(event.target.value)} />
+        <Button type="submit" tone="ghost">
+          Trocar senha
+        </Button>
+      </form>
+      <form
+        className="mt-4 grid gap-2"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const response = await fetch("/api/account/delete", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ password: erase }),
+          });
+          const body = (await response.json().catch(() => null)) as { error?: string } | null;
+          if (response.ok) {
+            router.push("/");
+            router.refresh();
+          }
+          else setNote(body?.error ?? "Não apagou a conta.");
+        }}
+      >
+        <p className="text-sm">Apagar a conta e a planilha</p>
+        <input className={fieldClass} type="password" autoComplete="current-password" placeholder="Senha para confirmar" value={erase} onChange={(event) => setErase(event.target.value)} />
+        <Button type="submit" tone="ghost">
+          Excluir meus dados
+        </Button>
+      </form>
+      {note ? <p className="mt-3 text-sm text-muted">{note}</p> : null}
+    </section>
   );
 }
 
