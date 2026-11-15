@@ -98,11 +98,11 @@ export function Landing() {
                 Abrir em tela cheia
               </Link>
             </div>
-            <div className="grid min-w-0 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="min-w-0">
+            <div className="grid min-w-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="min-w-0 overflow-hidden">
                 <SheetStage sheetId={NOVEMBER} compact />
               </div>
-              <div className="border-t border-line lg:border-t-0 lg:border-l">
+              <div className="min-w-0 border-t border-line lg:border-t-0 lg:border-l">
                 <AgentPanel sheetId={NOVEMBER} compact />
               </div>
             </div>

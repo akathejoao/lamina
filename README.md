@@ -17,6 +17,7 @@ Abre em `http://localhost:3847`.
 - `/app` planilhas, saldo e vencimentos
 - `/app/planilha/sheet-nov` planilha e agente
 - `/app/perfil` termômetro, sequência no azul e preferências
+- `/app/resetar` zerar lançamentos ou restaurar o exemplo
 - `/app/educacao` trilhas curtas
 - `/baixar` instalar como aplicativo no Windows (PWA)
 

@@ -36,8 +36,8 @@ export function Modal({
           key="dialog"
           className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6"
           initial={reduce ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          animate={{ opacity: 1, pointerEvents: "auto" }}
+          exit={{ opacity: 0, pointerEvents: "none" }}
           transition={transition}
         >
           <button type="button" className="absolute inset-0 bg-black/70" aria-label="Fechar" onClick={onClose} />

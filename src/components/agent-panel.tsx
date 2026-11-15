@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { tips } from "@/lib/finance";
+import { easeOut } from "@/lib/motion";
 import { useStore } from "@/lib/store";
 import { Button, fieldClass } from "./ui";
 
@@ -13,6 +15,7 @@ const prompts = [
 
 export function AgentPanel({ sheetId, compact = false }: { sheetId: string; compact?: boolean }) {
   const { state, send } = useStore();
+  const reduce = useReducedMotion();
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"agente" | "dicas">("agente");
   const sheet = state.sheets.find((item) => item.id === sheetId);
@@ -56,18 +59,21 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
                 Estou na planilha {sheet.name}. Manda um gasto do jeito que você falaria: “Gastei R$ 85 no mercado hoje”.
               </p>
             ) : (
-              messages.map((message) => (
-                <p
-                  key={message.id}
-                  className={`max-w-[95%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                    message.role === "user"
-                      ? "ml-auto bg-surface-2 text-ink"
-                      : "bg-surface text-ink"
-                  }`}
-                >
-                  {message.text}
-                </p>
-              ))
+              <AnimatePresence initial={false}>
+                {messages.map((message) => (
+                  <motion.p
+                    key={message.id}
+                    initial={reduce ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: reduce ? 0 : 0.2, ease: easeOut }}
+                    className={`max-w-[95%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                      message.role === "user" ? "ml-auto bg-surface-2 text-ink" : "bg-surface text-ink"
+                    }`}
+                  >
+                    {message.text}
+                  </motion.p>
+                ))}
+              </AnimatePresence>
             )}
           </div>
           <div className="flex flex-wrap gap-2 px-3 pb-2">

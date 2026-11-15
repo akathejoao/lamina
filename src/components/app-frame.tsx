@@ -5,7 +5,7 @@ import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { GraduationCap, House, Shield, Table2, UserRound } from "lucide-react";
+import { GraduationCap, House, RotateCcw, Shield, Table2, UserRound } from "lucide-react";
 import { currentMonthly } from "@/lib/finance";
 import { useStore } from "@/lib/store";
 import { Mark } from "./mark";
@@ -62,6 +62,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <RailLink href="/app/perfil" label="Perfil" active={pathname.startsWith("/app/perfil")}>
                 <UserRound className="size-5" />
               </RailLink>
+              <RailLink href="/app/resetar" label="Resetar" active={pathname.startsWith("/app/resetar")}>
+                <RotateCcw className="size-5" />
+              </RailLink>
               {role === "admin" ? (
                 <RailLink href="/app/admin" label="Administração" active={pathname.startsWith("/app/admin")}>
                   <Shield className="size-5" />
@@ -88,14 +91,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             </div>
           </div>
-          <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-canvas/95 backdrop-blur md:hidden" aria-label="App">
+          <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-line bg-canvas/95 backdrop-blur md:hidden" aria-label="App">
             <MobileLink href="/app" label="Início" active={pathname === "/app"} />
             <MobileLink href="/app/educacao" label="Aprender" active={pathname.startsWith("/app/educacao")} />
             <MobileLink href="/app/perfil" label="Perfil" active={pathname.startsWith("/app/perfil")} />
             {current ? <MobileLink href={`/app/planilha/${current.id}`} label="Planilha" active={pathname.startsWith("/app/planilha")} /> : null}
+            <MobileLink href="/app/resetar" label="Resetar" active={pathname.startsWith("/app/resetar")} />
             {role === "admin" ? <MobileLink href="/app/admin" label="Admin" active={pathname.startsWith("/app/admin")} /> : null}
             {hasSide ? (
-              <button type="button" className="min-h-14 flex-1 text-sm text-violet-2" onClick={() => setAgentPath(pathname)}>
+              <button type="button" className="min-h-14 shrink-0 px-3 text-sm text-violet-2" onClick={() => setAgentPath(pathname)}>
                 Painel
               </button>
             ) : null}
@@ -138,7 +142,7 @@ function RailFace({ active, children }: { active: boolean; children: ReactNode }
 
 function MobileLink({ href, label, active }: { href: string; label: string; active: boolean }) {
   return (
-    <Link href={href} prefetch aria-current={active ? "page" : undefined} className="flex min-h-14 flex-1 items-center justify-center">
+    <Link href={href} prefetch aria-current={active ? "page" : undefined} className="flex min-h-14 min-w-[4.5rem] flex-1 items-center justify-center px-1">
       <MobileFace label={label} active={active} />
     </Link>
   );

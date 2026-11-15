@@ -1,10 +1,12 @@
 "use client";
 
 import { FormEvent, useMemo, useState, type CSSProperties } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { SliceChart } from "./slice-chart";
 import { SheetForm } from "./sheet-form";
 import { mathFor } from "@/lib/finance";
 import { formatBRL, formatDay, monthKey, parseMoney, todayISO } from "@/lib/money";
+import { easeOut, listParent } from "@/lib/motion";
 import { ACCENT_COLOR, accentOf, categoriesOf, draftFromSheet, SLICE_COLOR, splitOf } from "@/lib/sheets";
 import { useStore } from "@/lib/store";
 import { ENTRY_LABEL, KIND_LABEL, type EntryType } from "@/lib/types";
@@ -13,7 +15,8 @@ import { Button, Field, Modal, fieldClass } from "./ui";
 const types: EntryType[] = ["receita", "fixo", "variavel", "assinatura", "investimento"];
 
 export function SheetStage({ sheetId, compact = false }: { sheetId: string; compact?: boolean }) {
-  const { state, addEntry, removeEntry, archiveSheet, duplicateMonth, clearSheet, importRows, updateSheet } = useStore();
+  const { state, addEntry, removeEntry, archiveSheet, duplicateMonth, clearSheet, importRows, updateSheet, scope } = useStore();
+  const reduce = useReducedMotion();
   const sheet = state.sheets.find((item) => item.id === sheetId);
   const numbers = useMemo(() => (sheet ? mathFor(state, sheet) : null), [sheet, state]);
   const [open, setOpen] = useState(false);
@@ -115,14 +118,19 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
 
       {notice ? <p className="px-4 pt-3 text-sm text-violet-2">{notice}</p> : null}
 
-      <div className="grid gap-3 px-4 py-4 sm:grid-cols-3">
-        <Stat label="Entradas" value={formatBRL(numbers.income)} tone="text-mint" />
-        <Stat label="Saídas" value={formatBRL(numbers.burn)} tone="text-coral" />
-        <Stat label="Livre" value={formatBRL(numbers.free)} tone="text-ink" />
-      </div>
+      <motion.div
+        className="grid gap-3 px-4 py-4 sm:grid-cols-3"
+        initial={reduce ? false : "hidden"}
+        animate="show"
+        variants={listParent.variants}
+      >
+        <Stat label="Entradas" value={formatBRL(numbers.income)} tone="text-mint" reduce={!!reduce} />
+        <Stat label="Saídas" value={formatBRL(numbers.burn)} tone="text-coral" reduce={!!reduce} />
+        <Stat label="Livre" value={formatBRL(numbers.free)} tone="text-ink" reduce={!!reduce} />
+      </motion.div>
 
-      <div className="grid gap-4 px-4 pb-4 lg:grid-cols-[1.1fr_0.9fr_1fr]">
-        <div className="rounded-2xl border border-line bg-surface p-4">
+      <div className="grid min-w-0 gap-4 overflow-hidden px-4 pb-4 lg:grid-cols-[1.1fr_0.9fr_1fr]">
+        <div className="min-w-0 overflow-hidden rounded-2xl border border-line bg-surface p-4">
           <p className="kicker">Divisão do mês</p>
           <div className="mt-4 space-y-3">
             <Split label="Essenciais" actual={numbers.essenciais} income={splitBase} target={split.essenciais / 100} accent={accent} />
@@ -243,7 +251,9 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
         <p className="text-sm leading-relaxed text-muted">
           {confirm === "limpar"
             ? "Some só as linhas desta planilha. Metas e as outras folhas ficam."
-            : "Ela sai da tela inicial. O histórico continua guardado neste navegador."}
+            : scope === "conta"
+              ? "Ela sai da tela inicial. O histórico continua na conta, cifrado."
+              : "Ela sai da tela inicial. O histórico continua nesta demonstração."}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button type="button" tone="ghost" onClick={() => setConfirm(null)}>
@@ -266,28 +276,40 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
 }
 
 function CategoryBars({ items, accent }: { items: { category: string; cents: number }[]; accent: string }) {
+  const reduce = useReducedMotion();
   const max = Math.max(...items.map((item) => item.cents), 1);
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-line bg-surface p-4">
       <p className="kicker">Por categoria</p>
       {items.length === 0 ? <p className="mt-4 text-sm text-muted">Sem gastos lançados.</p> : null}
-      <div className="mt-4 flex h-28 items-end gap-2">
-        {items.map((item, index) => (
-          <button
-            key={item.category}
-            type="button"
-            title={`${item.category}: ${formatBRL(item.cents)}`}
-            aria-label={`${item.category}: ${formatBRL(item.cents)}`}
-            className="flex h-full min-w-0 flex-1 items-end"
-          >
-            <span
-              className="col-draw block w-full rounded-t-md"
-              style={{ "--scale": String(Math.max(0.08, item.cents / max)), background: accent, animationDelay: `${index * 40}ms` } as CSSProperties}
-            />
-          </button>
-        ))}
+      <div className="mt-4 flex h-28 items-end gap-2 overflow-hidden">
+        {items.map((item, index) => {
+          const height = Math.max(8, Math.round((item.cents / max) * 100));
+          return (
+            <button
+              key={item.category}
+              type="button"
+              title={`${item.category}: ${formatBRL(item.cents)}`}
+              aria-label={`${item.category}: ${formatBRL(item.cents)}`}
+              className="flex h-full min-w-0 flex-1 items-end overflow-hidden"
+            >
+              <motion.span
+                className="block w-full rounded-t-md"
+                style={{
+                  background: accent,
+                  height: `${height}%`,
+                  transformOrigin: "center bottom",
+                  willChange: "transform",
+                }}
+                initial={reduce ? false : { scaleY: 0 }}
+                animate={{ scaleY: 1 }}
+                transition={{ duration: reduce ? 0 : 0.45, delay: reduce ? 0 : index * 0.04, ease: easeOut }}
+              />
+            </button>
+          );
+        })}
       </div>
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex gap-2 overflow-hidden">
         {items.map((item) => (
           <span key={item.category} className="min-w-0 flex-1 truncate text-center text-[10px] text-faint">
             {item.category}
@@ -298,12 +320,18 @@ function CategoryBars({ items, accent }: { items: { category: string; cents: num
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
+function Stat({ label, value, tone, reduce }: { label: string; value: string; tone: string; reduce: boolean }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface px-4 py-3">
+    <motion.div
+      className="rounded-2xl border border-line bg-surface px-4 py-3"
+      variants={{
+        hidden: reduce ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 },
+        show: { opacity: 1, y: 0, transition: { duration: reduce ? 0 : 0.24, ease: easeOut } },
+      }}
+    >
       <p className="kicker">{label}</p>
       <p className={`num mt-2 text-2xl ${tone}`}>{value}</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -320,21 +348,26 @@ function Split({
   target: number;
   accent: string;
 }) {
+  const reduce = useReducedMotion();
   const ratio = income > 0 ? actual / income : 0;
   const scale = Math.min(1, ratio);
   return (
-    <div>
-      <div className="mb-1 flex justify-between text-sm">
-        <span>{label}</span>
-        <span className="num text-muted">
+    <div className="min-w-0">
+      <div className="mb-1 flex min-w-0 items-baseline justify-between gap-3 text-sm">
+        <span className="min-w-0 truncate">{label}</span>
+        <span className="num shrink-0 text-muted">
           {formatBRL(actual)} · {Math.round(ratio * 100)}%
         </span>
       </div>
-      <div className="relative h-2 rounded-full bg-canvas">
-        <div className="absolute inset-0 overflow-hidden rounded-full">
-          <div className="bar-draw h-2 rounded-full" style={{ "--scale": String(scale), background: accent } as CSSProperties} />
-        </div>
-        <span className="absolute top-[-3px] h-3.5 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} />
+      <div className="relative h-2 overflow-hidden rounded-full bg-canvas">
+        <motion.div
+          className="h-2 rounded-full"
+          style={{ background: accent, transformOrigin: "left center", willChange: "transform" }}
+          initial={reduce ? false : { scaleX: 0 }}
+          animate={{ scaleX: scale }}
+          transition={{ duration: reduce ? 0 : 0.45, ease: easeOut }}
+        />
+        <span className="pointer-events-none absolute top-[-3px] h-3.5 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} />
       </div>
     </div>
   );

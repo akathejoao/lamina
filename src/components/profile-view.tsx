@@ -11,7 +11,7 @@ import { Button, fieldClass } from "./ui";
 const levels = ["Crítico", "Equilibrado", "Poupador", "Investidor"] as const;
 
 export function ProfileView() {
-  const { state, updateProfile, reset, scope, email, consentAt, role } = useStore();
+  const { state, updateProfile, scope, email, consentAt, role } = useStore();
   const score = health(state);
   const run = streak(state);
   const goal = state.goals[0];
@@ -136,11 +136,9 @@ export function ProfileView() {
             />
             Mostrar a soma das metas
           </label>
-          {scope === "demo" ? (
-            <button type="button" className="justify-self-start text-sm text-faint hover:text-coral" onClick={() => reset()}>
-              Restaurar o exemplo da Marina
-            </button>
-          ) : null}
+          <a href="/app/resetar" className="justify-self-start text-sm text-faint hover:text-coral">
+            {scope === "demo" ? "Resetar a demonstração" : "Resetar as finanças"}
+          </a>
         </form>
         {scope === "conta" ? <AccountPanel email={email} consentAt={consentAt} role={role} /> : null}
       </div>

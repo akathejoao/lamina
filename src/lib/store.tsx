@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { interpret } from "./agent";
+import { freshLedger } from "./fresh";
 import { NOVEMBER, seedState } from "./seed";
 import { sheetFromDraft, type SheetDraft } from "./sheets";
 import { uid } from "./money";
@@ -403,7 +404,7 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
           return next;
         }),
       updateProfile: (patch) => write((current) => ({ ...current, profile: { ...current.profile, ...patch } })),
-      reset: () => write(() => ledger),
+      reset: () => write((current) => freshLedger(current.profile.name)),
     };
   }, [account, ledger, router, saveNote, write]);
 

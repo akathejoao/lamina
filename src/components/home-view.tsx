@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, useReducedMotion } from "motion/react";
 import { SliceChart } from "./slice-chart";
 import { SheetForm } from "./sheet-form";
 import { currentMonthly, health, mathFor, streak, tips } from "@/lib/finance";
 import { formatBRL, formatMonth, monthKey, todayISO } from "@/lib/money";
+import { easeOut, rise } from "@/lib/motion";
 import { accentOf, ACCENT_COLOR } from "@/lib/sheets";
 import { useStore } from "@/lib/store";
 import { KIND_LABEL } from "@/lib/types";
@@ -16,6 +18,7 @@ import { Button, Modal } from "./ui";
 export function HomeView() {
   const { state, createSheet } = useStore();
   const router = useRouter();
+  const reduce = useReducedMotion();
   const now = todayISO();
   const active = state.sheets.filter((sheet) => !sheet.archived);
   const archived = state.sheets.filter((sheet) => sheet.archived);
@@ -30,7 +33,7 @@ export function HomeView() {
   return (
     <>
       <SidePortal>
-        <aside className="h-full space-y-4 p-4">
+        <motion.aside className="h-full space-y-4 p-4" {...(reduce ? {} : rise)}>
           <p className="kicker">Este mês</p>
           <p className="num text-3xl">{numbers ? formatBRL(numbers.free) : "—"}</p>
           <p className="text-sm text-muted">livre em {current?.name ?? "nenhum ciclo aberto"}</p>
@@ -58,17 +61,27 @@ export function HomeView() {
               <p className="mt-2 text-sm leading-relaxed">{advice}</p>
             </div>
           ) : null}
-        </aside>
+        </motion.aside>
       </SidePortal>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
-        <p className="kicker">Olá, {state.profile.name.split(" ")[0]}</p>
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <h1 className="display text-4xl sm:text-5xl">Suas planilhas</h1>
-          <Button type="button" onClick={() => setOpen(true)}>
-            Nova planilha
-          </Button>
-        </div>
-        <ul className="mt-8 space-y-3">
+        <motion.div {...(reduce ? {} : rise)}>
+          <p className="kicker">Olá, {state.profile.name.split(" ")[0]}</p>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+            <h1 className="display text-4xl sm:text-5xl">Suas planilhas</h1>
+            <Button type="button" onClick={() => setOpen(true)}>
+              Nova planilha
+            </Button>
+          </div>
+        </motion.div>
+        <motion.ul
+          className="mt-8 space-y-3"
+          initial={reduce ? false : "hidden"}
+          animate="show"
+          variants={{
+            hidden: {},
+            show: { transition: { staggerChildren: reduce ? 0 : 0.05, delayChildren: reduce ? 0 : 0.05 } },
+          }}
+        >
           {active.map((sheet) => {
             const math = mathFor(state, sheet, now);
             const goal = state.goals.find((item) =>
@@ -76,7 +89,13 @@ export function HomeView() {
             );
             const shown = sheet.kind === "mensal" ? math.free : (goal?.savedCents ?? math.invested);
             return (
-              <li key={sheet.id}>
+              <motion.li
+                key={sheet.id}
+                variants={{
+                  hidden: reduce ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 },
+                  show: { opacity: 1, y: 0, transition: { duration: reduce ? 0 : 0.24, ease: easeOut } },
+                }}
+              >
                 <Link href={`/app/planilha/${sheet.id}`} className="tint relative block overflow-hidden rounded-2xl border border-line bg-surface px-4 py-4 pl-5 hover:border-violet-2">
                   <span className="absolute inset-y-3 left-0 w-1 rounded-full" style={{ background: ACCENT_COLOR[accentOf(sheet)] }} />
                   <div className="flex items-start justify-between gap-3">
@@ -96,10 +115,10 @@ export function HomeView() {
                     <p className="num text-right text-lg">{formatBRL(shown)}</p>
                   </div>
                 </Link>
-              </li>
+              </motion.li>
             );
           })}
-        </ul>
+        </motion.ul>
         {archived.length ? (
           <button type="button" className="mt-6 text-sm text-muted" onClick={() => setShowArchived((value) => !value)}>
             {showArchived ? "Esconder arquivadas" : `Ver ${archived.length} arquivadas`}
