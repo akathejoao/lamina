@@ -1,12 +1,16 @@
 import { readdir, readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
+import { assertParameterized } from "./sql-guard";
+
+const MIGRATION = /^\d{3}_[a-z0-9_]+\.sql$/;
 
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 let pool: pg.Pool | undefined;
 let local: Promise<PGlite> | undefined;
 
 export async function sql<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+  assertParameterized(text);
   if (databaseUrl !== "") {
     pool ??= new pg.Pool({ connectionString: databaseUrl, max: 5 });
     return (await pool.query(text, params)).rows as T[];
@@ -20,7 +24,7 @@ export async function sql<T = Record<string, unknown>>(text: string, params: unk
 
 async function startLocal(): Promise<PGlite> {
   const db = new PGlite();
-  const files = (await readdir("migrations").catch(() => [])).filter((file) => file.endsWith(".sql")).sort();
+  const files = (await readdir("migrations").catch(() => [])).filter((file) => MIGRATION.test(file)).sort();
   for (const file of files) {
     await db.exec(await readFile(`migrations/${file}`, "utf8"));
   }

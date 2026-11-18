@@ -1,4 +1,5 @@
 import { monthKey, todayISO } from "./money";
+import { safePhoto } from "./photo";
 import type { LedgerState } from "./types";
 
 export function freshLedger(name: string): LedgerState {
@@ -47,7 +48,28 @@ export function freshLedger(name: string): LedgerState {
 }
 
 export function isLedger(value: unknown): value is LedgerState {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as LedgerState;
-  return Array.isArray(record.sheets) && Array.isArray(record.entries) && Array.isArray(record.goals) && !!record.profile;
+  if (!record.profile || typeof record.profile !== "object" || Array.isArray(record.profile)) return false;
+  if (!Array.isArray(record.sheets) || record.sheets.length > 400) return false;
+  if (!Array.isArray(record.entries) || record.entries.length > 20_000) return false;
+  if (!Array.isArray(record.goals) || record.goals.length > 200) return false;
+  if (!Array.isArray(record.messages) || record.messages.length > 5_000) return false;
+  return true;
+}
+
+export function scrubLedger(ledger: LedgerState): LedgerState {
+  return {
+    ...ledger,
+    profile: {
+      ...ledger.profile,
+      photoDataUrl: safePhoto(ledger.profile.photoDataUrl),
+    },
+  };
+}
+
+export function applyProfilePatch(current: LedgerState, patch: Partial<LedgerState["profile"]>): LedgerState {
+  const profile = { ...current.profile, ...patch };
+  if ("photoDataUrl" in patch) profile.photoDataUrl = safePhoto(patch.photoDataUrl);
+  return scrubLedger({ ...current, profile });
 }

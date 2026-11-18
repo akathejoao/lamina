@@ -3,7 +3,7 @@ import pg from "pg";
 
 const url = process.env.DATABASE_URL?.trim() ?? "";
 const files = (await readdir("migrations").catch(() => []))
-  .filter((file) => file.endsWith(".sql"))
+  .filter((file) => /^\d{3}_[a-z0-9_]+\.sql$/.test(file))
   .sort();
 
 if (url === "" || files.length === 0) {

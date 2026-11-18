@@ -44,6 +44,21 @@ export function decryptJson<T>(dek: Buffer, sealed: string): T {
   return JSON.parse(open(dek, sealed).toString("utf8")) as T;
 }
 
+export function sealBytes(key: Buffer, plain: Buffer): string {
+  return seal(key, plain);
+}
+
+export function openBytes(key: Buffer, sealed: string): Buffer {
+  return open(key, sealed);
+}
+
+export async function burnPasswordCheck(password: string): Promise<void> {
+  dummyRecord ??= await hashPassword("lamina-dummy-password-not-a-login");
+  await verifyPassword(password, dummyRecord.salt, dummyRecord.hash);
+}
+
+let dummyRecord: { salt: string; hash: string } | null = null;
+
 function seal(key: Buffer, plain: Buffer): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);

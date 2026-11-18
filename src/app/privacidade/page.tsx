@@ -37,7 +37,7 @@ export default function PrivacyPage() {
       <h2>Crianças</h2>
       <p>A Lâmina não é dirigida a menores de 18 anos. O cadastro pede essa confirmação.</p>
       <h2>Cookie</h2>
-      <p>Um cookie httpOnly, chamado lamina_session, guarda a sessão por 14 dias. Sem ele, a chave da planilha não acompanha o navegador. Não usamos cookie de rastreamento.</p>
+      <p>Um cookie httpOnly, chamado lamina_session, identifica a sessão por 14 dias. A chave da planilha só vai nesse cookie cifrada com o segredo do servidor. Não usamos cookie de rastreamento.</p>
       <p>
         <Link href="/termos" className="text-violet-2">Ler os termos de uso</Link>
       </p>

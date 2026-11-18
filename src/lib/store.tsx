@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { interpret } from "./agent";
-import { freshLedger } from "./fresh";
+import { applyProfilePatch, freshLedger, scrubLedger } from "./fresh";
 import { NOVEMBER, seedState } from "./seed";
 import { sheetFromDraft, type SheetDraft } from "./sheets";
 import { uid } from "./money";
@@ -230,8 +230,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (outcome.csv) next = outcome.csv.reduce((acc, row) => pushEntry(acc, sheetId, row), next);
           return next;
         }),
-      updateProfile: (patch) =>
-        update((current) => ({ ...current, profile: { ...current.profile, ...patch } })),
+      updateProfile: (patch) => update((current) => applyProfilePatch(current, patch)),
       reset: () => emit(seedState),
     }),
     [state],
@@ -265,7 +264,13 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [ledger, setLedger] = useState<LedgerState | null>(null);
   const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [blocked, setBlocked] = useState(false);
   const [saveNote, setSaveNote] = useState("Abrindo a planilha cifrada…");
+
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/");
+  }, [router]);
 
   useEffect(() => {
     let live = true;
@@ -276,13 +281,27 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
           router.push("/entrar");
           return;
         }
+        if (response.status === 403) {
+          const body = (await response.json().catch(() => null)) as { blocked?: boolean } | null;
+          if (body?.blocked) {
+            setBlocked(true);
+            setSaveNote("Acesso pausado");
+            return;
+          }
+        }
         if (!response.ok) {
           setSaveNote("Não foi possível abrir a planilha.");
           return;
         }
         const body = (await response.json()) as { ledger: LedgerState; account: AccountInfo };
-        accountLedger = body.ledger;
-        setLedger(body.ledger);
+        if (body.account.access === "bloqueado") {
+          setBlocked(true);
+          setSaveNote("Acesso pausado");
+          return;
+        }
+        const clean = scrubLedger(body.ledger);
+        accountLedger = clean;
+        setLedger(clean);
         setAccount(body.account);
         setSaveNote("Salva na conta");
       })
@@ -297,7 +316,7 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
 
   const write = useCallback((recipe: (current: LedgerState) => LedgerState) => {
     if (!accountLedger) return;
-    const next = recipe(accountLedger);
+    const next = scrubLedger(recipe(accountLedger));
     accountLedger = next;
     setLedger(next);
     setSaveNote("Salvando…");
@@ -323,10 +342,7 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
       access: account.access,
       consentAt: account.consentAt,
       saveNote,
-      logout: async () => {
-        await fetch("/api/auth/logout", { method: "POST" });
-        router.push("/");
-      },
+      logout,
       addEntry: (sheetId, draft) => write((current) => pushEntry(current, sheetId, draft)),
       removeEntry: (id) => write((current) => ({ ...current, entries: current.entries.filter((entry) => entry.id !== id) })),
       createSheet: (draft) => {
@@ -403,20 +419,19 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
           if (outcome.csv) next = outcome.csv.reduce((acc, row) => pushEntry(acc, sheetId, row), next);
           return next;
         }),
-      updateProfile: (patch) => write((current) => ({ ...current, profile: { ...current.profile, ...patch } })),
+      updateProfile: (patch) => write((current) => applyProfilePatch(current, patch)),
       reset: () => write((current) => freshLedger(current.profile.name)),
     };
-  }, [account, ledger, router, saveNote, write]);
+  }, [account, ledger, logout, saveNote, write]);
 
+  if (blocked) return <BlockedAccess logout={logout} />;
   if (!api) {
     return <p className="px-6 py-16 text-sm text-muted">{saveNote}</p>;
   }
-  const blocked = api.access === "bloqueado" && api.role !== "admin";
-  return <AccountContext.Provider value={api}>{blocked ? <BlockedAccess /> : children}</AccountContext.Provider>;
+  return <AccountContext.Provider value={api}>{children}</AccountContext.Provider>;
 }
 
-function BlockedAccess() {
-  const { logout } = useStore();
+function BlockedAccess({ logout }: { logout: () => Promise<void> }) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
       <p className="kicker">Acesso pausado</p>
@@ -424,7 +439,7 @@ function BlockedAccess() {
       <p className="mt-4 text-sm leading-relaxed text-muted">
         O administrador marcou o acesso como bloqueado. Quando ele voltar para cortesia ou ativo, os lançamentos continuam aqui, cifrados.
       </p>
-      <button type="button" className="mt-6 text-sm text-violet-2" onClick={() => void logout?.()}>
+      <button type="button" className="mt-6 text-sm text-violet-2" onClick={() => void logout()}>
         Sair
       </button>
     </main>

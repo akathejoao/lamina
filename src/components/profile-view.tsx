@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { health, patrimony, streak } from "@/lib/finance";
 import { formatBRL } from "@/lib/money";
+import { safePhoto } from "@/lib/photo";
 import { useStore } from "@/lib/store";
 import type { Banner, Tone } from "@/lib/types";
 import { Button, fieldClass } from "./ui";
@@ -12,6 +13,7 @@ const levels = ["Crítico", "Equilibrado", "Poupador", "Investidor"] as const;
 
 export function ProfileView() {
   const { state, updateProfile, scope, email, consentAt, role } = useStore();
+  const [photoNote, setPhotoNote] = useState("");
   const score = health(state);
   const run = streak(state);
   const goal = state.goals[0];
@@ -21,7 +23,7 @@ export function ProfileView() {
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
         <div className={`relative h-40 overflow-hidden rounded-3xl border border-line ${bannerClass(state.profile.banner)}`}>
           <div className="absolute bottom-4 left-4 flex items-end gap-3">
-            <Avatar name={state.profile.name} photo={state.profile.photoDataUrl} />
+            <Avatar name={state.profile.name} photo={safePhoto(state.profile.photoDataUrl)} />
             <div>
               <p className="text-xl">{state.profile.name}</p>
               {role === "admin" ? <p className="text-xs text-violet-2">Administrador</p> : null}
@@ -56,7 +58,7 @@ export function ProfileView() {
             <div className="mt-3 h-2 rounded-full bg-canvas">
               <div
                 className="h-2 rounded-full bg-mint"
-                style={{ width: `${Math.min(100, (goal.savedCents / goal.targetCents) * 100)}%` }}
+                style={{ width: `${goal.targetCents > 0 ? Math.min(100, (goal.savedCents / goal.targetCents) * 100) : 0}%` }}
               />
             </div>
           </section>
@@ -95,15 +97,29 @@ export function ProfileView() {
             <input
               className={`${fieldClass} mt-1`}
               type="file"
-              accept="image/*"
+              accept="image/png,image/jpeg,image/webp,image/gif"
               onChange={(event) => {
                 const file = event.target.files?.[0];
+                event.currentTarget.value = "";
                 if (!file) return;
+                if (file.size > 300_000 || !/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+                  setPhotoNote("Use PNG, JPEG, WEBP ou GIF de até 300 KB.");
+                  return;
+                }
                 const reader = new FileReader();
-                reader.onload = () => updateProfile({ photoDataUrl: String(reader.result) });
+                reader.onload = () => {
+                  const photo = safePhoto(String(reader.result));
+                  if (!photo) {
+                    setPhotoNote("Essa imagem não pôde ser usada.");
+                    return;
+                  }
+                  setPhotoNote("");
+                  updateProfile({ photoDataUrl: photo });
+                };
                 reader.readAsDataURL(file);
               }}
             />
+            {photoNote ? <p className="text-sm text-muted">{photoNote}</p> : null}
           </label>
           <label className="text-sm text-muted">
             Banner
@@ -247,12 +263,9 @@ function Avatar({ name, photo }: { name: string; photo: string | null }) {
     .toUpperCase();
   if (photo) {
     return (
-      <span
-        role="img"
-        aria-label={`Foto de ${name}`}
-        className="size-16 rounded-full bg-cover bg-center"
-        style={{ backgroundImage: `url(${photo})` }}
-      />
+      // The source is a validated data URL. The image optimizer does not accept it.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={photo} alt="" className="size-16 rounded-full object-cover" />
     );
   }
   return (

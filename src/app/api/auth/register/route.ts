@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
+import { isDesignatedAdmin } from "@/lib/admin";
 import { PRIVACY_VERSION, TERMS_VERSION, encryptJson, hashPassword, newDek, wrapDek } from "@/lib/crypto";
 import { sql } from "@/lib/db";
 import { freshLedger } from "@/lib/fresh";
-import { asRecord, cleanEmail, cleanName, cleanPassword, jsonError, limited, readJson } from "@/lib/guard";
-import { isDesignatedAdmin } from "@/lib/admin";
-import { clientKey, sameOrigin, sealSession, sessionCookie } from "@/lib/session";
+import { asRecord, cleanEmail, cleanName, cleanPassword, jsonBody, jsonError, limited, readJson } from "@/lib/guard";
+import { createSession, sameOrigin } from "@/lib/session";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return jsonError(403, "Origem não aceita.");
-  if (limited(`register:${clientKey(request)}`, 5, 60 * 60 * 1000)) {
+  if (limited("register:*", 40, 60 * 60 * 1000)) {
     return jsonError(429, "Muitas tentativas. Espere um pouco e tente de novo.");
   }
   const body = asRecord(await readJson(request));
@@ -22,6 +25,9 @@ export async function POST(request: Request) {
   }
   if (!adult || !consent) {
     return jsonError(400, "Para criar a conta, confirme a idade e o consentimento.");
+  }
+  if (limited(`register:${email}`, 5, 60 * 60 * 1000)) {
+    return jsonError(429, "Muitas tentativas. Espere um pouco e tente de novo.");
   }
   const dek = newDek();
   const wrapped = await wrapDek(password, dek);
@@ -41,10 +47,10 @@ export async function POST(request: Request) {
     if (code === "23505" || String(error).toLowerCase().includes("unique")) {
       return jsonError(409, "Já existe uma conta com esse e-mail. Entre com ela.");
     }
-    console.error("register failed", error);
+    console.error("register failed", code ?? "unknown");
     return jsonError(500, "Não foi possível criar a conta.");
   }
-  const response = Response.json({ ok: true });
-  response.headers.set("Set-Cookie", sessionCookie(sealSession(id, dek), request));
+  const response = jsonBody({ ok: true });
+  response.headers.set("Set-Cookie", await createSession(id, dek, request));
   return response;
 }

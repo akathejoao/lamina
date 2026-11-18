@@ -1,83 +1,57 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { sql } from "./db";
+import { sessionSecretIsConfigured } from "./secret";
+import { openSessionToken, sealSessionToken } from "./session-token";
 
 const COOKIE = "lamina_session";
 const MAX_AGE = 60 * 60 * 24 * 14;
 
-type Payload = {
-  sub: string;
-  exp: number;
-  dek: string;
-};
-
-let memorySecret: string | undefined;
-
-function secret(): string {
-  const configured = process.env.SESSION_SECRET?.trim();
-  if (configured) return configured;
-  if (memorySecret) return memorySecret;
-  const path = ".data/session-secret";
-  try {
-    mkdirSync(".data", { recursive: true });
-    const existing = readFileSync(path, "utf8").trim();
-    if (existing) {
-      memorySecret = existing;
-      return memorySecret;
-    }
-  } catch {
-    /* the file is created below */
-  }
-  const created = randomBytes(32).toString("base64url");
-  try {
-    const fd = openSync(path, "wx");
-    writeFileSync(fd, created);
-    closeSync(fd);
-    memorySecret = created;
-    return memorySecret;
-  } catch {
-    const existing = readFileSync(path, "utf8").trim();
-    memorySecret = existing || created;
-    return memorySecret;
-  }
+function persistsSessionRow(): boolean {
+  return (process.env.DATABASE_URL?.trim() ?? "") !== "" && sessionSecretIsConfigured();
 }
 
-export function sealSession(userId: string, dek: Buffer): string {
-  const payload: Payload = {
-    sub: userId,
-    exp: Date.now() + MAX_AGE * 1000,
-    dek: dek.toString("base64url"),
-  };
-  const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
-  const mac = createHmac("sha256", secret()).update(body).digest("base64url");
-  return `${body}.${mac}`;
-}
-
-export function openSession(token: string | undefined): { userId: string; dek: Buffer } | null {
-  if (!token) return null;
-  const [body, mac] = token.split(".");
-  if (!body || !mac) return null;
-  const expected = createHmac("sha256", secret()).update(body).digest("base64url");
-  const left = Buffer.from(mac);
-  const right = Buffer.from(expected);
-  if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
-  let payload: Payload;
-  try {
-    payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Payload;
-  } catch {
-    return null;
+export async function createSession(userId: string, dek: Buffer, request: Request): Promise<string> {
+  const sid = randomBytes(32).toString("base64url");
+  const exp = Date.now() + MAX_AGE * 1000;
+  const token = sealSessionToken({ sub: userId, sid, exp, dek });
+  if (persistsSessionRow()) {
+    await sql(`delete from sessions where expires_at < now()`);
+    await sql(`insert into sessions (id, user_id, expires_at) values ($1, $2, to_timestamp($3))`, [
+      sid,
+      userId,
+      exp / 1000,
+    ]);
   }
-  if (!payload.sub || !payload.dek || payload.exp < Date.now()) return null;
-  return { userId: payload.sub, dek: Buffer.from(payload.dek, "base64url") };
+  return cookieHeader(`${COOKIE}=${token}`, MAX_AGE, request);
 }
 
 export async function readSession(): Promise<{ userId: string; dek: Buffer } | null> {
   const jar = await cookies();
-  return openSession(jar.get(COOKIE)?.value);
+  const opened = openSessionToken(jar.get(COOKIE)?.value);
+  if (!opened) return null;
+  if (!persistsSessionRow()) return { userId: opened.userId, dek: opened.dek };
+  const rows = await sql<{ user_id: string }>(
+    `select user_id from sessions where id = $1 and expires_at > now()`,
+    [opened.sid],
+  );
+  const row = rows[0];
+  if (!row || row.user_id !== opened.userId) return null;
+  return { userId: row.user_id, dek: opened.dek };
 }
 
-export function sessionCookie(token: string, request: Request): string {
-  return cookieHeader(`${COOKIE}=${token}`, MAX_AGE, request);
+export async function destroySession(request: Request): Promise<string> {
+  const jar = await cookies();
+  const opened = openSessionToken(jar.get(COOKIE)?.value);
+  if (opened && persistsSessionRow()) {
+    await sql(`delete from sessions where id = $1`, [opened.sid]);
+  }
+  return clearSessionCookie(request);
+}
+
+export async function revokeUserSessions(userId: string): Promise<void> {
+  if ((process.env.DATABASE_URL?.trim() ?? "") === "") return;
+  await sql(`delete from sessions where user_id = $1`, [userId]);
 }
 
 export function clearSessionCookie(request: Request): string {
@@ -85,33 +59,31 @@ export function clearSessionCookie(request: Request): string {
 }
 
 function cookieHeader(pair: string, maxAge: number, request: Request): string {
-  const secure = isSecure(request);
   const parts = [pair, "HttpOnly", "SameSite=Lax", "Path=/", `Max-Age=${maxAge}`];
-  if (secure) parts.push("Secure");
+  if (isSecure(request)) parts.push("Secure");
   return parts.join("; ");
 }
 
 function isSecure(request: Request): boolean {
-  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  if (forwarded) return forwarded === "https";
-  return new URL(request.url).protocol === "https:";
+  if (new URL(request.url).protocol === "https:") return true;
+  const forwarded = request.headers.get("x-forwarded-proto") ?? "";
+  return forwarded.split(",").some((part) => part.trim() === "https");
 }
 
 export function sameOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
   const host = request.headers.get("host");
   if (!host) return false;
-  try {
-    const originHost = new URL(origin).host;
-    if (originHost === host) return true;
-    const local = new Set(["localhost", "127.0.0.1"]);
-    return local.has(new URL(origin).hostname) && local.has(host.split(":")[0] ?? "");
-  } catch {
-    return false;
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      const url = new URL(origin);
+      if (url.host === host) return true;
+      const local = new Set(["localhost", "127.0.0.1"]);
+      return local.has(url.hostname) && local.has(host.split(":")[0] ?? "");
+    } catch {
+      return false;
+    }
   }
-}
-
-export function clientKey(request: Request): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  const site = request.headers.get("sec-fetch-site");
+  return site === "same-origin" || site === "none";
 }
