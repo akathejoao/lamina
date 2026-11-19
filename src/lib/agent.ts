@@ -1,6 +1,9 @@
-import { guessEntry, mathFor, parseCsv, type SheetMath } from "./finance";
+import { guessEntry, mathFor, parseCsv, tidyTalk, type SheetMath } from "./finance";
 import { formatBRL, formatMonth, parseMoney, todayISO } from "./money";
 import type { EntryType, LedgerState, Sheet } from "./types";
+
+const AMOUNT = String.raw`(?:\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d+(?:,\d{1,2})?)`;
+const MONEY = String.raw`(?:r\$\s*)?(${AMOUNT})`;
 
 export type AgentOutcome = {
   reply: string;
@@ -29,33 +32,26 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
       csv: rows,
     };
   }
+  const salary = trimmed.match(new RegExp(String.raw`sal[aá]rio(?:\s+mensal)?(?:\s+(?:é|eh|e|de|fica))?[\s:=]*${MONEY}`, "i"));
+  if (salary && !/gastei|paguei|comprei/i.test(trimmed)) {
+    const cents = parseMoney(salary[1]);
+    if (!cents) return { reply: "Diz o valor do salário. Por exemplo: meu salário é R$ 5.400." };
+    return {
+      entry: { type: "receita", title: "Salário", category: "Salário", cents, date: todayISO() },
+      reply: `Anotei o salário: ${formatBRL(cents)}. Livre agora: ${formatBRL(numbers.free + cents)}.`,
+    };
+  }
   const spend = trimmed.match(
-    /(?:gastei|paguei|comprei|saiu|lan[cç]a)\s+(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:,\d{2})?)\s*(?:reais)?(?:\s+(?:no|na|em|com|de|pra|para))?\s*(.*)$/i,
+    new RegExp(String.raw`(?:gastei|paguei|comprei|saiu|lan[cç]a)\s+${MONEY}\s*(?:reais|real)?(?:\s+(?:no|na|em|com|de|pra|para))?\s*(.*)$`, "i"),
   );
   if (spend) {
     const cents = parseMoney(spend[1]);
     if (cents === null) return { reply: "Não entendi o valor. Tenta de novo com R$ 85 ou 85,00." };
     const detail = (spend[2] ?? "").replace(/\bhoje\b/i, "").trim();
-    const guessed = guessEntry(detail || trimmed);
-    const title = detail ? capitalize(detail) : guessed.title;
-    const after = numbers.free - (guessed.type === "receita" ? -cents : cents);
-    return {
-      entry: {
-        type: guessed.type,
-        title,
-        category: guessed.category,
-        cents,
-        date: todayISO(),
-      },
-      reply: joinTone(
-        tone,
-        `Lancei ${formatBRL(cents)} em ${guessed.category}, como ${label(guessed.type)}, hoje.`,
-        `Livre no mês: ${formatBRL(after)}.`,
-      ),
-    };
+    return launch(cents, detail || trimmed, numbers, tone);
   }
   const income = trimmed.match(
-    /(?:recebi|entrou|ganhei|caiu)\s+(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:,\d{2})?)\s*(?:reais)?(?:\s+(?:de|em|do|da))?\s*(.*)$/i,
+    new RegExp(String.raw`(?:recebi|entrou|ganhei|caiu)\s+${MONEY}\s*(?:reais|real)?(?:\s+(?:de|em|do|da))?\s*(.*)$`, "i"),
   );
   if (income) {
     const cents = parseMoney(income[1]);
@@ -73,12 +69,29 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
       reply: `Entrou ${formatBRL(cents)}. Livre agora: ${formatBRL(numbers.free + cents)}.`,
     };
   }
+  const loose = trimmed.match(
+    new RegExp(String.raw`^${MONEY}\s*(?:reais|real|conto|contos)?(?:\s+(?:de|do|da|no|na|em|com|pra|para|pro|num|numa))?\s+(.+)$`, "i"),
+  );
+  if (loose) {
+    const cents = parseMoney(loose[1]);
+    const detail = (loose[2] ?? "").replace(/\bhoje\b/gi, "").trim();
+    if (cents && detail) return launch(cents, detail, numbers, tone);
+  }
+  const named = trimmed.match(
+    new RegExp(
+      String.raw`^(?:(?:o|a|os|as|meu|minha|meus|minhas)\s+)?([a-zà-ú0-9][\p{L}0-9\s]{0,40}?)\s+(?:é|eh|=|:)\s*${MONEY}(?:\s*reais|real)?$`,
+      "iu",
+    ),
+  );
+  if (named && !/^(quanto|como|qual|quais|simule|onde|por)\b/i.test(named[1] ?? "")) {
+    const cents = parseMoney(named[2]);
+    const detail = (named[1] ?? "").trim();
+    if (cents && detail) return launch(cents, detail, numbers, tone);
+  }
   if (/quanto posso gastar|por dia|at[eé] o fim do m[eê]s/i.test(trimmed)) {
     return { reply: dailyReply(numbers, tone) };
   }
-  const sim = trimmed.match(
-    /(?:simule|simular|guardar)[\s\S]{0,48}?(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:,\d{2})?)/i,
-  );
+  const sim = trimmed.match(new RegExp(String.raw`(?:simule|simular|guardar)[\s\S]{0,48}?${MONEY}`, "i"));
   if (sim) {
     const cents = parseMoney(sim[1]);
     if (!cents) return { reply: "Diz o valor mensal da simulação, por exemplo: simule se eu guardar R$ 400." };
@@ -90,8 +103,8 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
   return {
     reply: joinTone(
       tone,
-      "Posso lançar um gasto, responder quanto cabe por dia, listar assinaturas ou simular um aporte.",
-      `Exemplo: “Gastei R$ 85 no mercado hoje”. Livre agora: ${formatBRL(numbers.free)}.`,
+      "Pode ser “meu salário é R$ 5.400”, “100 reais de uber” ou “gastei R$ 85 no mercado”.",
+      `Também respondo quanto cabe por dia e simulo um aporte. Livre agora: ${formatBRL(numbers.free)}.`,
     ),
   };
 }
@@ -141,6 +154,37 @@ function label(type: EntryType): string {
   if (type === "assinatura") return "assinatura";
   if (type === "investimento") return "investimento";
   return "gasto variável";
+}
+
+function launch(cents: number, detail: string, numbers: SheetMath, tone: LedgerState["profile"]["tone"]): AgentOutcome {
+  const guessed = guessEntry(detail);
+  const title = spokenDetail(detail) || guessed.title;
+  const after = numbers.free - (guessed.type === "receita" ? -cents : cents);
+  return {
+    entry: {
+      type: guessed.type,
+      title,
+      category: guessed.category,
+      cents,
+      date: todayISO(),
+    },
+    reply: joinTone(
+      tone,
+      `Lancei ${formatBRL(cents)} em ${guessed.category}, como ${label(guessed.type)}, hoje.`,
+      `Livre no mês: ${formatBRL(after)}.`,
+    ),
+  };
+}
+
+function spokenDetail(detail: string): string {
+  const clean = tidyTalk(detail)
+    .replace(/^(?:reais|real|contos?)\s+(?:de|do|da|no|na|em|com|pra|para|pro)\s+/, "")
+    .replace(/^(?:reais|real|contos?)\s+/, "")
+    .replace(/\bhoje\b/g, "")
+    .replace(/[.?]/g, "")
+    .trim();
+  if (!clean) return "";
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
 function capitalize(value: string): string {
