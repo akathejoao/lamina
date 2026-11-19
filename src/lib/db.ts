@@ -9,11 +9,18 @@ const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 let pool: pg.Pool | undefined;
 let local: Promise<PGlite> | undefined;
 
+export function hasDatabase(): boolean {
+  return databaseUrl !== "";
+}
+
 export async function sql<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
   assertParameterized(text);
   if (databaseUrl !== "") {
     pool ??= new pg.Pool({ connectionString: databaseUrl, max: 5 });
     return (await pool.query(text, params)).rows as T[];
+  }
+  if (process.env.VERCEL === "1" || process.env.NODE_ENV === "production") {
+    throw new Error("DATABASE_URL é obrigatório na hospedagem. Sem ele as contas não sobrevivem.");
   }
   local ??= startLocal().catch((error: unknown) => {
     local = undefined;

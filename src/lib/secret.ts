@@ -10,8 +10,15 @@ export function sessionSecretIsConfigured(): boolean {
 export function sessionSecret(): string {
   const configured = process.env.SESSION_SECRET?.trim() ?? "";
   if (configured.length >= MIN) return configured;
+  if (isHosted()) {
+    throw new Error("SESSION_SECRET com pelo menos 32 caracteres é obrigatório na hospedagem.");
+  }
   if ((process.env.DATABASE_URL?.trim() ?? "") !== "") return ephemeral();
   return localFile();
+}
+
+function isHosted(): boolean {
+  return process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
 }
 
 let memorySecret: string | undefined;

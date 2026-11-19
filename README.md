@@ -21,7 +21,14 @@ Abre em `http://localhost:3847`.
 - `/app/educacao` trilhas curtas
 - `/baixar` instalar como aplicativo no Windows (PWA)
 
-A janela da página inicial é uma demonstração neste navegador. A conta, em Entrar ou Criar conta, grava a planilha cifrada: o banco guarda o texto fechado, e a senha é a chave. Sem `DATABASE_URL`, o desenvolvimento usa um Postgres em memória, então as contas somem quando o servidor reinicia. Se `SESSION_SECRET` não estiver definida, a sessão local usa um segredo só desta máquina, em `.data/session-secret`, fora do git. No servidor publicado, defina `SESSION_SECRET` com 32 caracteres ou mais e `ADMIN_EMAIL` com o e-mail de quem administra. Esse e-mail não fica no código: no login, essa conta vira administradora, vê quem se cadastrou e marca o acesso como cortesia, ativo ou bloqueado, sem abrir a planilha de ninguém. Conta bloqueada não entra, não lê e não exporta. Com `DATABASE_URL`, as migrations em `migrations/` sobem no Postgres publicado. Em Perfil dá para exportar os dados, trocar a senha e apagar a conta.
+A janela da página inicial é uma demonstração neste navegador. A conta, em Entrar ou Criar conta, grava a planilha cifrada: o banco guarda o texto fechado, e a senha é a chave. Sem `DATABASE_URL`, o desenvolvimento usa um Postgres em memória, então as contas somem quando o servidor reinicia. Se `SESSION_SECRET` não estiver definida, a sessão local usa um segredo só desta máquina, em `.data/session-secret`, fora do git. Na Vercel (ou qualquer hospedagem), `DATABASE_URL` e `SESSION_SECRET` (32+ caracteres) são obrigatórios; sem eles a conta não sobe. Defina também `ADMIN_EMAIL` com o e-mail de quem administra. Esse e-mail não fica no código: no login, essa conta vira administradora, vê quem se cadastrou e marca o acesso como cortesia, ativo ou bloqueado, sem abrir a planilha de ninguém. Conta bloqueada não entra, não lê e não exporta. Com `DATABASE_URL`, as migrations em `migrations/` sobem no Postgres no build. Em Perfil dá para exportar os dados, trocar a senha e apagar a conta.
+
+## Hospedar na Vercel
+
+1. Conecte o repositório no painel da Vercel.
+2. Crie um Postgres (Vercel Storage ou Neon) e ligue `DATABASE_URL` (e, se existir, `DATABASE_URL_UNPOOLED`).
+3. Em Environment Variables, defina `SESSION_SECRET` e `ADMIN_EMAIL`.
+4. Faça o deploy. O build roda `next build` e aplica as migrations.
 
 ## O que o agente entende
 
@@ -33,4 +40,4 @@ A janela da página inicial é uma demonstração neste navegador. A conta, em E
 
 ## Stack
 
-Next.js, React, TypeScript, Tailwind CSS, Motion, Lucide e Recharts. Skills de interface usadas na direção visual ficam em `.agents/skills/`.
+Next.js, React, TypeScript, Tailwind CSS, Motion e Lucide. Skills de interface usadas na direção visual ficam em `.agents/skills/`.
