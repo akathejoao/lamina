@@ -17,7 +17,7 @@ export function LearnView() {
                 <button
                   type="button"
                   onClick={() => setOpen(trail.id)}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm ${open === trail.id ? "bg-violet text-ink" : "text-muted hover:bg-surface"}`}
+                  className={`w-full rounded-xl px-3 py-2 text-left text-sm ${open === trail.id ? "bg-surface-2 text-ink" : "text-muted hover:bg-surface"}`}
                 >
                   {trail.title}
                 </button>

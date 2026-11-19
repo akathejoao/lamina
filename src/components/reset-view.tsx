@@ -24,7 +24,7 @@ export function ResetView() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-8">
-      <motion.div {...(reduce ? {} : rise)}>
+      <motion.div initial={reduce ? false : rise.initial} animate={rise.animate} transition={rise.transition}>
         <p className="kicker">Resetar</p>
         <h1 className="display mt-3 text-4xl sm:text-5xl">Começar as finanças de novo</h1>
         <p className="mt-4 text-sm leading-relaxed text-muted">
@@ -51,7 +51,9 @@ export function ResetView() {
       {done ? (
         <motion.div
           className="mt-8 rounded-2xl border border-line bg-surface p-5"
-          {...(reduce ? {} : rise)}
+          initial={reduce ? false : rise.initial}
+          animate={rise.animate}
+          transition={rise.transition}
         >
           <p className="text-lg text-mint">Pronto. A planilha voltou limpa.</p>
           <p className="mt-2 text-sm text-muted">

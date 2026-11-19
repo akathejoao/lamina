@@ -38,8 +38,8 @@ export function ProfileView() {
           <div className="mt-4 grid grid-cols-4 gap-2">
             {levels.map((level, levelIndex) => (
               <div key={level}>
-                <div className={`h-2 rounded-full ${levelIndex <= index ? "bg-violet" : "bg-canvas"}`} />
-                <p className="mt-2 text-xs text-faint">{level}</p>
+                <div className={`h-2 rounded-full ${levelIndex <= index ? "bg-ink" : "bg-canvas"}`} />
+                <p className="mt-2 text-xs text-muted">{level}</p>
               </div>
             ))}
           </div>
@@ -64,19 +64,9 @@ export function ProfileView() {
           </section>
         ) : null}
 
-        <section className="mt-4 grid gap-3 sm:grid-cols-3">
-          <article className="rounded-2xl border border-line p-4">
-            <p className="kicker">Conquista</p>
-            <p className="mt-2 text-sm">Três ciclos mensais fechados no azul, de setembro a novembro.</p>
-          </article>
-          <article className="rounded-2xl border border-line p-4">
-            <p className="kicker">Conquista</p>
-            <p className="mt-2 text-sm">Reserva passou de um terço do alvo sem mexer no lazer inteiro.</p>
-          </article>
-          <article className="rounded-2xl border border-line p-4">
-            <p className="kicker">Patrimônio nas metas</p>
-            <p className="num mt-2 text-lg">{state.profile.showPatrimony ? formatBRL(patrimony(state)) : "oculto"}</p>
-          </article>
+        <section className="mt-4 rounded-2xl border border-line p-4">
+          <p className="kicker">Patrimônio nas metas</p>
+          <p className="num mt-2 text-lg">{state.profile.showPatrimony ? formatBRL(patrimony(state)) : "oculto"}</p>
         </section>
 
         <form
@@ -245,7 +235,7 @@ function AccountPanel({
       >
         <p className="text-sm">Apagar a conta e a planilha</p>
         <input className={fieldClass} type="password" autoComplete="current-password" placeholder="Senha para confirmar" value={erase} onChange={(event) => setErase(event.target.value)} />
-        <Button type="submit" tone="ghost">
+        <Button type="submit" tone="ghost" className="text-coral hover:border-coral">
           Excluir meus dados
         </Button>
       </form>
@@ -276,5 +266,5 @@ function Avatar({ name, photo }: { name: string; photo: string | null }) {
 function bannerClass(banner: Banner): string {
   if (banner === "noite") return "bg-[#16141f]";
   if (banner === "papel") return "bg-[#2a2433]";
-  return "bg-[linear-gradient(120deg,#2a2144_0%,#14121c_55%,#3a2158_100%)]";
+  return "bg-[#241d38]";
 }

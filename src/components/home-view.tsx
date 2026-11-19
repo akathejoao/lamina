@@ -33,7 +33,7 @@ export function HomeView() {
   return (
     <>
       <SidePortal>
-        <motion.aside className="h-full space-y-4 p-4" {...(reduce ? {} : rise)}>
+        <motion.aside className="h-full space-y-4 p-4" initial={reduce ? false : rise.initial} animate={rise.animate} transition={rise.transition}>
           <p className="kicker">Este mês</p>
           <p className="num text-3xl">{numbers ? formatBRL(numbers.free) : "—"}</p>
           <p className="text-sm text-muted">livre em {current?.name ?? "nenhum ciclo aberto"}</p>
@@ -64,7 +64,7 @@ export function HomeView() {
         </motion.aside>
       </SidePortal>
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
-        <motion.div {...(reduce ? {} : rise)}>
+        <motion.div initial={reduce ? false : rise.initial} animate={rise.animate} transition={rise.transition}>
           <p className="kicker">Olá, {state.profile.name.split(" ")[0]}</p>
           <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
             <h1 className="display text-4xl sm:text-5xl">Suas planilhas</h1>
@@ -96,12 +96,14 @@ export function HomeView() {
                   show: { opacity: 1, y: 0, transition: { duration: reduce ? 0 : 0.24, ease: easeOut } },
                 }}
               >
-                <Link href={`/app/planilha/${sheet.id}`} className="tint relative block overflow-hidden rounded-2xl border border-line bg-surface px-4 py-4 pl-5 hover:border-violet-2">
-                  <span className="absolute inset-y-3 left-0 w-1 rounded-full" style={{ background: ACCENT_COLOR[accentOf(sheet)] }} />
+                <Link href={`/app/planilha/${sheet.id}`} className="tint relative block overflow-hidden rounded-2xl border border-line bg-surface px-4 py-4 hover:border-violet-2">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="kicker">{KIND_LABEL[sheet.kind]}</p>
-                      <p className="mt-1 text-xl">{sheet.name}</p>
+                      <p className="flex items-center gap-2 text-xl">
+                        <span className="size-2 shrink-0 rounded-full" style={{ background: ACCENT_COLOR[accentOf(sheet)] }} aria-hidden="true" />
+                        {sheet.name}
+                      </p>
+                      <p className="kicker mt-1">{KIND_LABEL[sheet.kind]}</p>
                       <p className="mt-1 text-sm text-muted">
                         {sheet.note
                           ? sheet.note
@@ -119,6 +121,11 @@ export function HomeView() {
             );
           })}
         </motion.ul>
+        {active.length === 0 ? (
+          <p className="mt-8 rounded-2xl border border-dashed border-line p-6 text-sm text-muted">
+            Nenhuma planilha aberta. Use Nova planilha para começar o mês, uma meta ou a reserva.
+          </p>
+        ) : null}
         {archived.length ? (
           <button type="button" className="mt-6 text-sm text-muted" onClick={() => setShowArchived((value) => !value)}>
             {showArchived ? "Esconder arquivadas" : `Ver ${archived.length} arquivadas`}

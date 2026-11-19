@@ -1,9 +1,26 @@
-import { guessEntry, mathFor, parseCsv, tidyTalk, type SheetMath } from "./finance";
+import { guessEntry, mathFor, readCsv, tidyTalk, type CsvRow, type SheetMath } from "./finance";
 import { formatBRL, formatMonth, parseMoney, todayISO } from "./money";
 import type { EntryType, LedgerState, Sheet } from "./types";
 
-const AMOUNT = String.raw`(?:\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d+(?:,\d{1,2})?)`;
-const MONEY = String.raw`(?:r\$\s*)?(${AMOUNT})`;
+// Milhar com ponto (5.400, 1.234,56), decimal com vírgula ou ponto (85,50 ou 85.50) e inteiro.
+// "mil" e "k" multiplicam por mil: "2 mil", "2k", "2,5 mil".
+const AMOUNT = String.raw`(?:\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?(?![\d.])|\d+[.,]\d{1,2}(?!\d)|\d+)`;
+const MONEY = String.raw`(?:r\$\s*)?(${AMOUNT}(?:\s*(?:mil|k)(?![a-zà-ú0-9]))?)`;
+
+export function amountCents(raw: string): number | null {
+  const trimmed = raw.trim();
+  const thousand = /\s*(?:mil|k)$/i.test(trimmed);
+  const cents = parseMoney(trimmed.replace(/\s*(?:mil|k)$/i, ""));
+  if (cents === null) return null;
+  return thousand ? cents * 1000 : cents;
+}
+
+// Sobrou número colado ao valor ("85.5.0", "12 34"): melhor perguntar do que gravar errado.
+function unclear(detail: string): boolean {
+  return /^[.,]?\d/.test(detail.trim());
+}
+
+const UNCLEAR = "Não tenho certeza do valor. Escreva só o número, como R$ 85,50 ou 2 mil.";
 
 export type AgentOutcome = {
   reply: string;
@@ -14,7 +31,7 @@ export type AgentOutcome = {
     cents: number;
     date: string;
   };
-  csv?: ReturnType<typeof parseCsv>;
+  csv?: CsvRow[];
 };
 
 export function interpret(text: string, state: LedgerState, sheet: Sheet): AgentOutcome {
@@ -22,19 +39,20 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
   const numbers = mathFor(state, sheet);
   const tone = state.profile.tone;
   if (looksLikeCsv(trimmed)) {
-    const rows = parseCsv(trimmed);
+    const { rows, skipped } = readCsv(trimmed);
     if (!rows.length) {
       return { reply: "Não consegui ler esse CSV. Use colunas data, descricao, valor e, se quiser, tipo." };
     }
     const total = rows.reduce((sum, row) => sum + row.cents, 0);
+    const left = skipped ? ` ${skipped} linha${skipped > 1 ? "s ficaram" : " ficou"} de fora por falta de descrição ou valor.` : "";
     return {
-      reply: `Li ${rows.length} linha${rows.length > 1 ? "s" : ""} (${formatBRL(total)}) e coloquei na planilha ${sheet.name}.`,
+      reply: `Li ${rows.length} linha${rows.length > 1 ? "s" : ""} (${formatBRL(total)}) e coloquei na planilha ${sheet.name}.${left}`,
       csv: rows,
     };
   }
   const salary = trimmed.match(new RegExp(String.raw`sal[aá]rio(?:\s+mensal)?(?:\s+(?:é|eh|e|de|fica))?[\s:=]*${MONEY}`, "i"));
   if (salary && !/gastei|paguei|comprei/i.test(trimmed)) {
-    const cents = parseMoney(salary[1]);
+    const cents = amountCents(salary[1]);
     if (!cents) return { reply: "Diz o valor do salário. Por exemplo: meu salário é R$ 5.400." };
     return {
       entry: { type: "receita", title: "Salário", category: "Salário", cents, date: todayISO() },
@@ -45,8 +63,9 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
     new RegExp(String.raw`(?:gastei|paguei|comprei|saiu|lan[cç]a)\s+${MONEY}\s*(?:reais|real)?(?:\s+(?:no|na|em|com|de|pra|para))?\s*(.*)$`, "i"),
   );
   if (spend) {
-    const cents = parseMoney(spend[1]);
-    if (cents === null) return { reply: "Não entendi o valor. Tenta de novo com R$ 85 ou 85,00." };
+    const cents = amountCents(spend[1]);
+    if (cents === null || cents === 0) return { reply: "Não entendi o valor. Tenta de novo com R$ 85 ou 85,00." };
+    if (unclear(spend[2] ?? "")) return { reply: UNCLEAR };
     const detail = (spend[2] ?? "").replace(/\bhoje\b/i, "").trim();
     return launch(cents, detail || trimmed, numbers, tone);
   }
@@ -54,8 +73,9 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
     new RegExp(String.raw`(?:recebi|entrou|ganhei|caiu)\s+${MONEY}\s*(?:reais|real)?(?:\s+(?:de|em|do|da))?\s*(.*)$`, "i"),
   );
   if (income) {
-    const cents = parseMoney(income[1]);
-    if (cents === null) return { reply: "Não entendi o valor que entrou." };
+    const cents = amountCents(income[1]);
+    if (cents === null || cents === 0) return { reply: "Não entendi o valor que entrou." };
+    if (unclear(income[2] ?? "")) return { reply: UNCLEAR };
     const detail = (income[2] ?? "").trim();
     const guessed = guessEntry(detail || "extra");
     return {
@@ -73,8 +93,9 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
     new RegExp(String.raw`^${MONEY}\s*(?:reais|real|conto|contos)?(?:\s+(?:de|do|da|no|na|em|com|pra|para|pro|num|numa))?\s+(.+)$`, "i"),
   );
   if (loose) {
-    const cents = parseMoney(loose[1]);
+    const cents = amountCents(loose[1]);
     const detail = (loose[2] ?? "").replace(/\bhoje\b/gi, "").trim();
+    if (unclear(detail)) return { reply: UNCLEAR };
     if (cents && detail) return launch(cents, detail, numbers, tone);
   }
   const named = trimmed.match(
@@ -84,7 +105,7 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
     ),
   );
   if (named && !/^(quanto|como|qual|quais|simule|onde|por)\b/i.test(named[1] ?? "")) {
-    const cents = parseMoney(named[2]);
+    const cents = amountCents(named[2]);
     const detail = (named[1] ?? "").trim();
     if (cents && detail) return launch(cents, detail, numbers, tone);
   }
@@ -93,13 +114,13 @@ export function interpret(text: string, state: LedgerState, sheet: Sheet): Agent
   }
   const sim = trimmed.match(new RegExp(String.raw`(?:simule|simular|guardar)[\s\S]{0,48}?${MONEY}`, "i"));
   if (sim) {
-    const cents = parseMoney(sim[1]);
+    const cents = amountCents(sim[1]);
     if (!cents) return { reply: "Diz o valor mensal da simulação, por exemplo: simule se eu guardar R$ 400." };
     return { reply: simulate(state, cents, tone) };
   }
   if (/assinatur/i.test(trimmed)) return { reply: subscriptionReply(numbers) };
   if (/vazament|onde.*escap|diagn[oó]stico/i.test(trimmed)) return { reply: leakReply(numbers, tone) };
-  if (/sa[uú]de|score|term[oô]metro/i.test(trimmed)) return { reply: "O termômetro está no perfil. Ele olha o mês aberto, a fatia essencial e a reserva — não uma nota genérica." };
+  if (/sa[uú]de|score|term[oô]metro/i.test(trimmed)) return { reply: "O termômetro está no perfil. Ele olha o mês aberto, a fatia essencial e a reserva. Não é uma nota genérica." };
   return {
     reply: joinTone(
       tone,
@@ -145,7 +166,8 @@ function leakReply(numbers: SheetMath, tone: LedgerState["profile"]["tone"]): st
 }
 
 function looksLikeCsv(text: string): boolean {
-  return /descricao|descrição|valor/i.test(text) && /[,;\n]/.test(text);
+  const [first = "", second] = text.split("\n");
+  return second !== undefined && /descricao|descrição|valor/i.test(first);
 }
 
 function label(type: EntryType): string {

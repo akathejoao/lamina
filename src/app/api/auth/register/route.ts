@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { isDesignatedAdmin } from "@/lib/admin";
+import { adminSetupAccepted, isDesignatedAdmin } from "@/lib/admin";
 import { PRIVACY_VERSION, TERMS_VERSION, encryptJson, hashPassword, newDek, wrapDek } from "@/lib/crypto";
-import { sql } from "@/lib/db";
+import { sqlAll } from "@/lib/db";
 import { freshLedger } from "@/lib/fresh";
 import { asRecord, cleanEmail, cleanName, cleanPassword, jsonBody, jsonError, limited, readJson } from "@/lib/guard";
 import { createSession, sameOrigin } from "@/lib/session";
@@ -29,6 +29,9 @@ export async function POST(request: Request) {
   if (limited(`register:${email}`, 5, 60 * 60 * 1000)) {
     return jsonError(429, "Muitas tentativas. Espere um pouco e tente de novo.");
   }
+  if (isDesignatedAdmin(email) && !adminSetupAccepted(body?.adminCode)) {
+    return jsonError(403, "Este e-mail é reservado à administração. Informe o código de configuração.", { adminCode: true });
+  }
   const dek = newDek();
   const wrapped = await wrapDek(password, dek);
   const passwordRecord = await hashPassword(password);
@@ -36,12 +39,14 @@ export async function POST(request: Request) {
   const ledger = encryptJson(dek, freshLedger(name));
   const role = isDesignatedAdmin(email) ? "admin" : "user";
   try {
-    await sql(
-      `insert into users (id, email, name, password_salt, password_hash, wrap_salt, wrapped_dek, terms_version, privacy_version, consent_at, role)
+    await sqlAll([
+      {
+        text: `insert into users (id, email, name, password_salt, password_hash, wrap_salt, wrapped_dek, terms_version, privacy_version, consent_at, role)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), $10)`,
-      [id, email, name, passwordRecord.salt, passwordRecord.hash, wrapped.salt, wrapped.wrapped, TERMS_VERSION, PRIVACY_VERSION, role],
-    );
-    await sql(`insert into ledgers (user_id, ciphertext) values ($1, $2)`, [id, ledger]);
+        params: [id, email, name, passwordRecord.salt, passwordRecord.hash, wrapped.salt, wrapped.wrapped, TERMS_VERSION, PRIVACY_VERSION, role],
+      },
+      { text: `insert into ledgers (user_id, ciphertext) values ($1, $2)`, params: [id, ledger] },
+    ]);
   } catch (error) {
     const code = (error as { code?: string }).code;
     if (code === "23505" || String(error).toLowerCase().includes("unique")) {

@@ -1,4 +1,4 @@
-import { ensureDesignatedAdmin, isDesignatedAdmin } from "@/lib/admin";
+import { isDesignatedAdmin, syncAdminRole } from "@/lib/admin";
 import { burnPasswordCheck, unwrapDek, verifyPassword } from "@/lib/crypto";
 import { sql } from "@/lib/db";
 import { asRecord, blockedError, cleanEmail, cleanPassword, jsonBody, jsonError, limited, readJson } from "@/lib/guard";
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   if (user.access_status === "bloqueado" && !isDesignatedAdmin(email)) return blockedError();
   const dek = await unwrapDek(password, user.wrap_salt, user.wrapped_dek);
   if (!dek) return jsonError(401, "E-mail ou senha não conferem.");
-  await ensureDesignatedAdmin(email);
+  await syncAdminRole(email);
   const response = jsonBody({ ok: true });
   response.headers.set("Set-Cookie", await createSession(user.id, dek, request));
   return response;

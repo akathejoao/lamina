@@ -16,9 +16,40 @@ export function hasDatabase(): boolean {
 export async function sql<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
   assertParameterized(text);
   if (databaseUrl !== "") {
-    pool ??= new pg.Pool({ connectionString: databaseUrl, max: 5 });
-    return (await pool.query(text, params)).rows as T[];
+    return (await remote().query(text, params)).rows as T[];
   }
+  return (await (await localDb()).query<T>(text, params)).rows;
+}
+
+// Roda os comandos juntos: ou todos gravam, ou nenhum.
+export async function sqlAll(steps: { text: string; params: unknown[] }[]): Promise<void> {
+  for (const step of steps) assertParameterized(step.text);
+  if (databaseUrl !== "") {
+    const client = await remote().connect();
+    try {
+      await client.query("begin");
+      for (const step of steps) await client.query(step.text, step.params);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return;
+  }
+  const db = await localDb();
+  await db.transaction(async (tx) => {
+    for (const step of steps) await tx.query(step.text, step.params);
+  });
+}
+
+function remote(): pg.Pool {
+  pool ??= new pg.Pool({ connectionString: databaseUrl, max: 5 });
+  return pool;
+}
+
+function localDb(): Promise<PGlite> {
   if (process.env.VERCEL === "1" || process.env.NODE_ENV === "production") {
     throw new Error("DATABASE_URL é obrigatório na hospedagem. Sem ele as contas não sobrevivem.");
   }
@@ -26,7 +57,7 @@ export async function sql<T = Record<string, unknown>>(text: string, params: unk
     local = undefined;
     throw error;
   });
-  return (await (await local).query<T>(text, params)).rows;
+  return local;
 }
 
 async function startLocal(): Promise<PGlite> {

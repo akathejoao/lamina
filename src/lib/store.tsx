@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { interpret } from "./agent";
 import { applyProfilePatch, freshLedger, scrubLedger } from "./fresh";
@@ -21,6 +21,8 @@ type DraftEntry = {
   installment?: { current: number; total: number } | null;
 };
 
+export type SaveState = "ok" | "saving" | "error" | "conflict" | "expired";
+
 type Store = {
   state: LedgerState;
   scope: "demo" | "conta";
@@ -29,9 +31,12 @@ type Store = {
   access: "cortesia" | "ativo" | "bloqueado" | null;
   consentAt: string | null;
   saveNote: string | null;
+  saveState: SaveState;
+  retrySave: () => void;
   logout: (() => Promise<void>) | null;
   addEntry: (sheetId: string, draft: DraftEntry) => void;
   removeEntry: (id: string) => void;
+  restoreEntry: (entry: Entry) => void;
   createSheet: (draft: SheetDraft) => string;
   updateSheet: (id: string, draft: SheetDraft) => void;
   archiveSheet: (id: string) => void;
@@ -143,6 +148,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       access: null,
       consentAt: null,
       saveNote: "Demonstração neste navegador",
+      saveState: "ok",
+      retrySave: () => undefined,
       logout: null,
       addEntry: (sheetId, draft) => update((current) => pushEntry(current, sheetId, draft)),
       removeEntry: (id) =>
@@ -150,6 +157,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...current,
           entries: current.entries.filter((entry) => entry.id !== id),
         })),
+      restoreEntry: (entry) => update((current) => ({ ...current, entries: [...current.entries, entry] })),
       createSheet: (draft) => {
         const id = uid();
         update((current) => ({ ...current, sheets: [...current.sheets, sheetFromDraft(id, draft)] }));
@@ -258,17 +266,68 @@ type AccountInfo = {
 };
 
 let accountLedger: LedgerState | null = null;
+let accountVersion = 0;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let inflight = false;
+let dirty = false;
+
+const SAVE_NOTE: Record<SaveState, string> = {
+  ok: "Salva na conta",
+  saving: "Salvando…",
+  error: "Não salvou. Sem conexão ou servidor fora do ar.",
+  conflict: "A planilha mudou em outro aparelho. Recarregue para ver a versão mais nova.",
+  expired: "A sessão terminou. Entre de novo para salvar.",
+};
+
+// Um salvamento por vez, sempre com a versão que o servidor devolveu por último.
+async function runSave(onState: (state: SaveState) => void, onBlocked: () => void): Promise<void> {
+  if (!accountLedger) return;
+  if (inflight) {
+    dirty = true;
+    return;
+  }
+  inflight = true;
+  dirty = false;
+  try {
+    const response = await fetch("/api/ledger", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ledger: accountLedger, version: accountVersion }),
+    });
+    const body = (await response.json().catch(() => null)) as { version?: number; blocked?: boolean } | null;
+    if (response.ok && typeof body?.version === "number") {
+      accountVersion = body.version;
+      onState(dirty ? "saving" : "ok");
+    } else if (response.status === 409) {
+      dirty = false;
+      onState("conflict");
+    } else if (response.status === 401) {
+      dirty = false;
+      onState("expired");
+    } else if (response.status === 403 && body?.blocked) {
+      dirty = false;
+      onBlocked();
+    } else {
+      onState("error");
+    }
+  } catch {
+    onState("error");
+  } finally {
+    inflight = false;
+  }
+  if (dirty) void runSave(onState, onBlocked);
+}
 
 export function AccountStoreProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [ledger, setLedger] = useState<LedgerState | null>(null);
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [blocked, setBlocked] = useState(false);
-  const [saveNote, setSaveNote] = useState("Abrindo a planilha cifrada…");
+  const [loadNote, setLoadNote] = useState("Abrindo a planilha cifrada…");
+  const [saveState, setSaveState] = useState<SaveState>("ok");
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     router.push("/");
   }, [router]);
 
@@ -285,28 +344,27 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
           const body = (await response.json().catch(() => null)) as { blocked?: boolean } | null;
           if (body?.blocked) {
             setBlocked(true);
-            setSaveNote("Acesso pausado");
             return;
           }
         }
         if (!response.ok) {
-          setSaveNote("Não foi possível abrir a planilha.");
+          setLoadNote("Não foi possível abrir a planilha. Recarregue a página.");
           return;
         }
-        const body = (await response.json()) as { ledger: LedgerState; account: AccountInfo };
+        const body = (await response.json()) as { ledger: LedgerState; version: number; account: AccountInfo };
         if (body.account.access === "bloqueado") {
           setBlocked(true);
-          setSaveNote("Acesso pausado");
           return;
         }
         const clean = scrubLedger(body.ledger);
         accountLedger = clean;
+        accountVersion = body.version;
         setLedger(clean);
         setAccount(body.account);
-        setSaveNote("Salva na conta");
+        setSaveState("ok");
       })
       .catch(() => {
-        if (live) setSaveNote("Sem conexão para abrir a planilha.");
+        if (live) setLoadNote("Sem conexão para abrir a planilha.");
       });
     return () => {
       live = false;
@@ -314,23 +372,47 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
     };
   }, [router]);
 
-  const write = useCallback((recipe: (current: LedgerState) => LedgerState) => {
-    if (!accountLedger) return;
-    const next = scrubLedger(recipe(accountLedger));
-    accountLedger = next;
-    setLedger(next);
-    setSaveNote("Salvando…");
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      fetch("/api/ledger", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(next),
-      })
-        .then((response) => setSaveNote(response.ok ? "Salva na conta" : "Não salvou. Tente de novo."))
-        .catch(() => setSaveNote("Não salvou. Sem conexão."));
-    }, 400);
-  }, []);
+  const flush = useCallback(() => runSave(setSaveState, () => setBlocked(true)), []);
+
+  const write = useCallback(
+    (recipe: (current: LedgerState) => LedgerState) => {
+      if (!accountLedger) return;
+      const next = scrubLedger(recipe(accountLedger));
+      accountLedger = next;
+      setLedger(next);
+      setSaveState("saving");
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => void flush(), 400);
+    },
+    [flush],
+  );
+
+  // Quem fecha a aba logo depois de editar não perde a última mudança.
+  useEffect(() => {
+    const onHide = () => {
+      if (!saveTimer || !accountLedger) return;
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      void flush();
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [flush]);
+
+  const retrySave = useCallback(() => {
+    if (saveState === "conflict") {
+      window.location.reload();
+      return;
+    }
+    if (saveState === "expired") {
+      router.push("/entrar");
+      return;
+    }
+    setSaveState("saving");
+    void flush();
+  }, [flush, router, saveState]);
+
+  const saveNote = SAVE_NOTE[saveState];
 
   const api = useMemo<Store | null>(() => {
     if (!ledger || !account) return null;
@@ -342,9 +424,12 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
       access: account.access,
       consentAt: account.consentAt,
       saveNote,
+      saveState,
+      retrySave,
       logout,
       addEntry: (sheetId, draft) => write((current) => pushEntry(current, sheetId, draft)),
       removeEntry: (id) => write((current) => ({ ...current, entries: current.entries.filter((entry) => entry.id !== id) })),
+      restoreEntry: (entry) => write((current) => ({ ...current, entries: [...current.entries, entry] })),
       createSheet: (draft) => {
         const id = uid();
         write((current) => ({ ...current, sheets: [...current.sheets, sheetFromDraft(id, draft)] }));
@@ -422,24 +507,77 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
       updateProfile: (patch) => write((current) => applyProfilePatch(current, patch)),
       reset: () => write((current) => freshLedger(current.profile.name)),
     };
-  }, [account, ledger, logout, saveNote, write]);
+  }, [account, ledger, logout, retrySave, saveNote, saveState, write]);
 
   if (blocked) return <BlockedAccess logout={logout} />;
   if (!api) {
-    return <p className="px-6 py-16 text-sm text-muted">{saveNote}</p>;
+    return (
+      <p className="px-6 py-16 text-sm text-muted" role="status">
+        {loadNote}
+      </p>
+    );
   }
   return <AccountContext.Provider value={api}>{children}</AccountContext.Provider>;
 }
 
 function BlockedAccess({ logout }: { logout: () => Promise<void> }) {
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const erase = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!window.confirm("Apagar a conta e a planilha cifrada? Isso não pode ser desfeito.")) return;
+    setPending(true);
+    setNote(null);
+    try {
+      const response = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (response.ok) {
+        router.push("/");
+        return;
+      }
+      setNote(body?.error ?? "Não apagou a conta.");
+    } catch {
+      setNote("Sem conexão. Tente de novo.");
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-      <p className="kicker">Acesso pausado</p>
-      <h1 className="display mt-3 text-4xl">Esta conta não entra na planilha agora.</h1>
+      <h1 className="display text-4xl">Esta conta não entra na planilha agora.</h1>
       <p className="mt-4 text-sm leading-relaxed text-muted">
         O administrador marcou o acesso como bloqueado. Quando ele voltar para cortesia ou ativo, os lançamentos continuam aqui, cifrados.
       </p>
-      <button type="button" className="mt-6 text-sm text-violet-2" onClick={() => void logout()}>
+      <form onSubmit={erase} className="mt-8 grid gap-2 border-t border-line pt-6">
+        <label className="text-sm text-muted" htmlFor="blocked-erase">
+          Se preferir, apague a conta e a planilha. Confirme com a senha.
+        </label>
+        <input
+          id="blocked-erase"
+          className="min-h-11 w-full rounded-xl border border-line bg-canvas px-3 text-ink outline-none focus-visible:border-violet"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+        <button type="submit" disabled={pending} className="press min-h-11 rounded-full border border-coral/50 px-4 text-sm text-coral disabled:opacity-40">
+          Apagar a conta
+        </button>
+        {note ? (
+          <p className="text-sm text-coral" role="alert">
+            {note}
+          </p>
+        ) : null}
+      </form>
+      <button type="button" className="mt-6 min-h-11 self-start text-sm text-violet-2" onClick={() => void logout()}>
         Sair
       </button>
     </main>

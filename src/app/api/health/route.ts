@@ -15,6 +15,7 @@ export async function GET() {
       database,
       sessionSecret: session,
       admin: Boolean(process.env.ADMIN_EMAIL?.trim()),
+      adminSetup: (process.env.ADMIN_SETUP_TOKEN?.trim().length ?? 0) >= 16,
     },
     ready ? 200 : 503,
   );

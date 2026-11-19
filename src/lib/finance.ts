@@ -1,4 +1,4 @@
-import { daysLeftInMonth, monthKey, todayISO } from "./money";
+import { daysLeftInMonth, monthKey, parseMoney, todayISO } from "./money";
 import { categoryBucket } from "./sheets";
 import type { Entry, EntryType, Goal, LedgerState, Sheet } from "./types";
 
@@ -48,11 +48,12 @@ export function bucketOf(entry: Entry, sheet?: Sheet): Bucket | null {
 export function mathFor(state: LedgerState, sheet: Sheet, now = todayISO()): SheetMath {
   const entries = sheetEntries(state, sheet.id);
   const sum = (list: Entry[]) => list.reduce((total, entry) => total + entry.cents, 0);
+  // Cada saída cai em um só balde. Futuro é o que foi guardado; o resto é gasto.
   const income = sum(entries.filter((entry) => entry.type === "receita"));
-  const invested = sum(entries.filter((entry) => entry.type === "investimento"));
   const essenciais = sum(entries.filter((entry) => bucketOf(entry, sheet) === "essenciais"));
   const estilo = sum(entries.filter((entry) => bucketOf(entry, sheet) === "estilo"));
-  const futuro = invested;
+  const futuro = sum(entries.filter((entry) => bucketOf(entry, sheet) === "futuro"));
+  const invested = futuro;
   const burn = essenciais + estilo;
   const free = income - burn - invested;
   const categories = new Map<string, number>();
@@ -131,11 +132,9 @@ export function tips(state: LedgerState, sheet: Sheet, now = todayISO()): string
   const numbers = mathFor(state, sheet, now);
   const lines: string[] = [];
   const lazer = numbers.byCategory.find((item) => item.category === "Lazer");
-  if (lazer) {
-    const cut = Math.round(lazer.cents * 0.15);
-    lines.push(
-      `Reduzir 15% em Lazer este mês libera ${brl(cut)} para a reserva. No ritmo atual, isso adianta a meta cerca de duas semanas.`,
-    );
+  const cut = lazer ? Math.round(lazer.cents * 0.15) : 0;
+  if (cut >= 1_000) {
+    lines.push(`Reduzir 15% em Lazer este mês libera ${brl(cut)} para a reserva.`);
   }
   const delivery = numbers.byCategory.find((item) => item.category === "Delivery");
   if (delivery && delivery.cents > 20_000) {
@@ -221,58 +220,119 @@ export type CsvRow = {
 };
 
 export function parseCsv(text: string): CsvRow[] {
+  return readCsv(text).rows;
+}
+
+const TYPES: EntryType[] = ["receita", "fixo", "variavel", "assinatura", "investimento"];
+
+// Lê o CSV e conta as linhas que ficaram de fora, para avisar em vez de sumir com elas.
+// Valor negativo é saída e positivo é entrada quando o arquivo tem sinal (extrato de banco).
+export function readCsv(text: string): { rows: CsvRow[]; skipped: number } {
   const lines = text
+    .replace(/^﻿/, "")
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length < 2) return [];
-  const delimiter = lines[0].includes(";") ? ";" : ",";
-  const header = lines[0].split(delimiter).map((cell) => cell.trim().toLowerCase());
+    .filter((line) => line.trim() !== "");
+  if (lines.length < 2) return { rows: [], skipped: 0 };
+  const delimiter = lines[0].includes(";") ? ";" : lines[0].includes("\t") ? "\t" : ",";
+  const header = splitCsvLine(lines[0], delimiter).map((cell) => cell.trim().toLowerCase());
   const index = (names: string[]) => header.findIndex((cell) => names.includes(cell));
   const dateIndex = index(["data", "date", "dia"]);
-  const titleIndex = index(["descricao", "descrição", "titulo", "título", "nome", "title"]);
+  const titleIndex = index(["descricao", "descrição", "titulo", "título", "nome", "title", "historico", "histórico"]);
   const valueIndex = index(["valor", "value", "amount", "quantia"]);
   const typeIndex = index(["tipo", "type"]);
   const categoryIndex = index(["categoria", "category", "tag"]);
-  if (titleIndex < 0 || valueIndex < 0) return [];
+  if (titleIndex < 0 || valueIndex < 0) return { rows: [], skipped: lines.length - 1 };
+  const parsed = lines.slice(1).map((line) => {
+    const cells = splitCsvLine(line, delimiter).map((cell) => cell.trim());
+    return { cells, value: signedCents(cells[valueIndex] ?? "") };
+  });
+  const signed = parsed.some((row) => row.value !== null && row.value < 0);
   const rows: CsvRow[] = [];
-  for (const line of lines.slice(1)) {
-    const cells = line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, ""));
-    const rawValue = cells[valueIndex] ?? "";
-    const cents = parseLoose(rawValue);
+  let skipped = 0;
+  for (const { cells, value } of parsed) {
     const title = cells[titleIndex] ?? "";
-    if (!title || cents === null) continue;
+    if (!title || value === null || value === 0) {
+      skipped += 1;
+      continue;
+    }
     const hinted = (cells[typeIndex] ?? "").toLowerCase();
-    const guessed = guessEntry(`${hinted} ${title} ${cells[categoryIndex] ?? ""}`);
-    const type = (["receita", "fixo", "variavel", "assinatura", "investimento"] as EntryType[]).includes(
-      hinted as EntryType,
-    )
-      ? (hinted as EntryType)
-      : guessed.type;
+    const category = categoryIndex >= 0 ? cells[categoryIndex] ?? "" : "";
+    const guessed = guessEntry(`${hinted} ${title} ${category}`);
+    let type: EntryType = TYPES.includes(hinted as EntryType) ? (hinted as EntryType) : guessed.type;
+    if (!TYPES.includes(hinted as EntryType) && signed) {
+      if (value > 0) type = "receita";
+      else if (type === "receita") type = "variavel";
+    }
     rows.push({
       date: normalizeDate(cells[dateIndex] ?? "") ?? todayISO(),
       title,
-      cents,
+      cents: Math.abs(value),
       type,
-      category: cells[categoryIndex] || guessed.category,
+      category: category || (type === "receita" && guessed.category === "Outros" ? "Extra" : guessed.category),
     });
   }
-  return rows;
+  return { rows, skipped };
 }
 
-function parseLoose(raw: string): number | null {
-  const cleaned = raw.replace(/r\$/gi, "").trim();
-  if (!cleaned) return null;
-  let normalized = cleaned;
-  if (cleaned.includes(",")) normalized = cleaned.replace(/\./g, "").replace(",", ".");
-  const value = Number(normalized);
-  if (!Number.isFinite(value)) return null;
-  return Math.round(Math.abs(value) * 100);
+function splitCsvLine(line: string, delimiter: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (quoted) {
+      if (char === '"' && line[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === delimiter) {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  cells.push(cell);
+  return cells;
+}
+
+function signedCents(raw: string): number | null {
+  let value = raw.replace(/\s/g, "");
+  let negative = false;
+  if (/^\(.*\)$/.test(value)) {
+    negative = true;
+    value = value.slice(1, -1);
+  }
+  if (value.startsWith("-") || value.startsWith("−")) {
+    negative = true;
+    value = value.slice(1);
+  } else if (value.startsWith("+")) {
+    value = value.slice(1);
+  }
+  value = value.replace(/^r\$/i, "");
+  if (value.startsWith("-") || value.startsWith("−")) {
+    negative = true;
+    value = value.slice(1);
+  }
+  const cents = parseMoney(value);
+  if (cents === null) return null;
+  return negative ? -cents : cents;
 }
 
 function normalizeDate(raw: string): string | null {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const value = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const match = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/);
   if (!match) return null;
-  return `${match[3]}-${match[2]}-${match[1]}`;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }

@@ -6,8 +6,9 @@ export const SLICE_LABEL: Record<SliceKey, string> = {
   futuro: "Futuro",
 };
 
+// Cores de dado. O violeta fica só nos botões de ação.
 export const SLICE_COLOR: Record<SliceKey, string> = {
-  essenciais: "#7c5cff",
+  essenciais: "#8ec5ff",
   estilo: "#ff8aa0",
   futuro: "#b6ffd2",
 };

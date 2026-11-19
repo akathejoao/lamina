@@ -71,7 +71,7 @@ function present(row: Row) {
   return {
     name: row.name,
     email: row.email,
-    role: row.role === "admin" ? "admin" : "user",
+    role: isDesignatedAdmin(row.email) ? "admin" : "user",
     access: presentAccess(row.email, row.access_status),
     note: row.admin_note,
     createdAt: row.created_at,

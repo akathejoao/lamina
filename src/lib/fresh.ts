@@ -58,9 +58,14 @@ export function isLedger(value: unknown): value is LedgerState {
   return true;
 }
 
+// O histórico do chat cresce a cada mensagem. Guardamos só as mais recentes, para a
+// planilha nunca passar do limite que o servidor aceita e parar de salvar.
+export const MESSAGE_KEEP = 1_000;
+
 export function scrubLedger(ledger: LedgerState): LedgerState {
   return {
     ...ledger,
+    messages: ledger.messages.length > MESSAGE_KEEP ? ledger.messages.slice(-MESSAGE_KEEP) : ledger.messages,
     profile: {
       ...ledger.profile,
       photoDataUrl: safePhoto(ledger.profile.photoDataUrl),

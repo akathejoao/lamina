@@ -1,4 +1,4 @@
-import { ensureDesignatedAdmin, isDesignatedAdmin } from "./admin";
+import { isDesignatedAdmin } from "./admin";
 import { sql } from "./db";
 import { blockedError, jsonError } from "./guard";
 
@@ -23,10 +23,9 @@ export async function loadAccount(userId: string): Promise<AccountGate | null> {
   );
   const row = rows[0];
   if (!row) return null;
-  if (isDesignatedAdmin(row.email) && row.role !== "admin") await ensureDesignatedAdmin(row.email);
   return {
     email: row.email,
-    role: isDesignatedAdmin(row.email) || row.role === "admin" ? "admin" : "user",
+    role: isDesignatedAdmin(row.email) ? "admin" : "user",
     access: presentAccess(row.email, row.access_status),
   };
 }

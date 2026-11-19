@@ -2,11 +2,11 @@ import { requireActive } from "@/lib/access";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { sql } from "@/lib/db";
 import { isLedger, scrubLedger } from "@/lib/fresh";
-import { jsonBody, jsonError, readJson } from "@/lib/guard";
+import { asRecord, jsonBody, jsonError, readJson } from "@/lib/guard";
 import { readSession, sameOrigin } from "@/lib/session";
 import type { LedgerState } from "@/lib/types";
 
-type LedgerRow = { ciphertext: string };
+type LedgerRow = { ciphertext: string; version: number };
 type ConsentRow = { consent_at: string; terms_version: string };
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export async function GET() {
   if (!session) return jsonError(401, "Entre para abrir a planilha.");
   const gate = await requireActive(session.userId);
   if (gate instanceof Response) return gate;
-  const ledgers = await sql<LedgerRow>(`select ciphertext from ledgers where user_id = $1`, [session.userId]);
+  const ledgers = await sql<LedgerRow>(`select ciphertext, version from ledgers where user_id = $1`, [session.userId]);
   const consent = await sql<ConsentRow>(`select consent_at, terms_version from users where id = $1`, [session.userId]);
   const row = ledgers[0];
   const account = consent[0];
@@ -32,6 +32,7 @@ export async function GET() {
   ledger = scrubLedger(ledger);
   return jsonBody({
     ledger,
+    version: Number(row.version),
     account: {
       email: gate.email,
       consentAt: account.consent_at,
@@ -48,12 +49,24 @@ export async function PUT(request: Request) {
   if (!session) return jsonError(401, "Entre para salvar.");
   const gate = await requireActive(session.userId);
   if (gate instanceof Response) return gate;
-  const body = await readJson(request, 1_600_000);
-  if (!isLedger(body)) return jsonError(400, "Planilha inválida.");
-  const clean = scrubLedger(body);
+  // O corpo leva a versão que o aparelho abriu. Se outra aba ou aparelho salvou antes,
+  // a versão mudou e a gravação é recusada com 409, em vez de apagar o trabalho do outro.
+  const body = asRecord(await readJson(request, 1_600_000));
+  if (!body) return jsonError(413, "A planilha passou do tamanho que a conta guarda.");
+  const version = body.version;
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 0) {
+    return jsonError(400, "Falta a versão da planilha. Recarregue a página.");
+  }
+  if (!isLedger(body.ledger)) return jsonError(400, "Planilha inválida.");
+  const clean = scrubLedger(body.ledger);
   const encoded = JSON.stringify(clean);
   if (encoded.length > 1_500_000) return jsonError(413, "A planilha passou do tamanho que a conta guarda.");
   const ciphertext = encryptJson(session.dek, clean);
-  await sql(`update ledgers set ciphertext = $1, updated_at = now() where user_id = $2`, [ciphertext, session.userId]);
-  return jsonBody({ ok: true });
+  const saved = await sql<{ version: number }>(
+    `update ledgers set ciphertext = $1, updated_at = now(), version = version + 1 where user_id = $2 and version = $3 returning version`,
+    [ciphertext, session.userId, version],
+  );
+  const row = saved[0];
+  if (!row) return jsonError(409, "A planilha mudou em outro aparelho.", { conflict: true });
+  return jsonBody({ ok: true, version: Number(row.version) });
 }

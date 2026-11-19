@@ -68,7 +68,7 @@ export function Modal({
 }
 
 const tones = {
-  violet: "bg-violet text-ink hover:bg-[#6d4df2]",
+  violet: "bg-violet text-ink hover:bg-[#5d3de0]",
   paper: "bg-ink text-canvas hover:bg-white",
   ghost: "border border-line bg-transparent text-ink hover:border-violet-2 hover:bg-surface-2",
 } as const;

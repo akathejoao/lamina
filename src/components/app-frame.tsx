@@ -5,9 +5,9 @@ import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { GraduationCap, House, RotateCcw, Shield, Table2, UserRound } from "lucide-react";
+import { GraduationCap, House, MessageSquareText, Shield, Table2, UserRound } from "lucide-react";
 import { currentMonthly } from "@/lib/finance";
-import { useStore } from "@/lib/store";
+import { useStore, type SaveState } from "@/lib/store";
 import { Mark } from "./mark";
 
 type SideSlot = {
@@ -31,7 +31,7 @@ export function SidePortal({ children }: { children: ReactNode }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { state, logout, saveNote, scope, role } = useStore();
+  const { state, logout, saveNote, saveState, retrySave, scope, role } = useStore();
   const current = currentMonthly(state);
   const [agentPath, setAgentPath] = useState<string | null>(null);
   const agentOpen = agentPath === pathname;
@@ -62,23 +62,20 @@ export function AppShell({ children }: { children: ReactNode }) {
               <RailLink href="/app/perfil" label="Perfil" active={pathname.startsWith("/app/perfil")}>
                 <UserRound className="size-5" />
               </RailLink>
-              <RailLink href="/app/resetar" label="Resetar" active={pathname.startsWith("/app/resetar")}>
-                <RotateCcw className="size-5" />
-              </RailLink>
               {role === "admin" ? (
                 <RailLink href="/app/admin" label="Administração" active={pathname.startsWith("/app/admin")}>
                   <Shield className="size-5" />
                 </RailLink>
               ) : null}
               {logout ? (
-                <button type="button" className="mt-auto text-[11px] text-faint hover:text-ink" onClick={() => void logout()}>
+                <button type="button" className="mt-auto min-h-11 px-2 text-xs text-muted hover:text-ink" onClick={() => void logout()}>
                   Sair
                 </button>
               ) : null}
             </nav>
             <div className="flex min-w-0 flex-1 flex-col md:flex-row">
               <div className="min-w-0 flex-1 pb-24 md:pb-0">
-                {scope === "conta" ? <p className="px-4 pt-3 text-xs text-faint">{saveNote}</p> : null}
+                {scope === "conta" ? <SaveStatus state={saveState} note={saveNote} onRetry={retrySave} /> : null}
                 {children}
               </div>
               <div className={hasSide ? `${agentOpen ? "fixed inset-0 z-40 flex md:static md:inset-auto" : "hidden md:flex"} md:max-h-dvh md:w-[340px] md:shrink-0 md:overflow-y-auto md:border-l md:border-line` : "hidden"}>
@@ -91,18 +88,22 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             </div>
           </div>
-          <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-line bg-canvas/95 backdrop-blur md:hidden" aria-label="App">
+          {hasSide && !agentOpen ? (
+            <button
+              type="button"
+              className="press fixed right-4 bottom-[4.5rem] z-30 inline-flex min-h-12 items-center gap-2 rounded-full bg-violet px-4 text-sm font-medium text-ink md:hidden"
+              onClick={() => setAgentPath(pathname)}
+            >
+              <MessageSquareText className="size-4" aria-hidden="true" />
+              {pathname.startsWith("/app/planilha") ? "Agente" : "Resumo do mês"}
+            </button>
+          ) : null}
+          <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-canvas md:hidden" aria-label="App">
             <MobileLink href="/app" label="Início" active={pathname === "/app"} />
-            <MobileLink href="/app/educacao" label="Aprender" active={pathname.startsWith("/app/educacao")} />
-            <MobileLink href="/app/perfil" label="Perfil" active={pathname.startsWith("/app/perfil")} />
             {current ? <MobileLink href={`/app/planilha/${current.id}`} label="Planilha" active={pathname.startsWith("/app/planilha")} /> : null}
-            <MobileLink href="/app/resetar" label="Resetar" active={pathname.startsWith("/app/resetar")} />
+            <MobileLink href="/app/educacao" label="Aprender" active={pathname.startsWith("/app/educacao")} />
+            <MobileLink href="/app/perfil" label="Perfil" active={pathname.startsWith("/app/perfil") || pathname.startsWith("/app/resetar")} />
             {role === "admin" ? <MobileLink href="/app/admin" label="Admin" active={pathname.startsWith("/app/admin")} /> : null}
-            {hasSide ? (
-              <button type="button" className="min-h-14 shrink-0 px-3 text-sm text-violet-2" onClick={() => setAgentPath(pathname)}>
-                Painel
-              </button>
-            ) : null}
           </nav>
         </div>
       </SideContext.Provider>
@@ -133,7 +134,7 @@ function RailFace({ active, children }: { active: boolean; children: ReactNode }
   return (
     <>
       {pending ? <RouteBar /> : null}
-      <span className={`tint flex size-11 items-center justify-center rounded-full ${on ? "bg-violet text-ink" : "text-muted hover:bg-surface"}`}>
+      <span className={`tint flex size-11 items-center justify-center rounded-full ${on ? "bg-surface-2 text-ink" : "text-muted hover:bg-surface"}`}>
         {children}
       </span>
     </>
@@ -142,7 +143,7 @@ function RailFace({ active, children }: { active: boolean; children: ReactNode }
 
 function MobileLink({ href, label, active }: { href: string; label: string; active: boolean }) {
   return (
-    <Link href={href} prefetch aria-current={active ? "page" : undefined} className="flex min-h-14 min-w-[4.5rem] flex-1 items-center justify-center px-1">
+    <Link href={href} prefetch aria-current={active ? "page" : undefined} className="flex min-h-14 min-w-0 flex-1 items-center justify-center px-1">
       <MobileFace label={label} active={active} />
     </Link>
   );
@@ -155,6 +156,25 @@ function MobileFace({ label, active }: { label: string; active: boolean }) {
       {pending ? <RouteBar /> : null}
       <span className={`text-sm ${active || pending ? "text-ink" : "text-muted"}`}>{label}</span>
     </>
+  );
+}
+
+function SaveStatus({ state, note, onRetry }: { state: SaveState; note: string | null; onRetry: () => void }) {
+  if (state === "ok" || state === "saving") {
+    return (
+      <p className="px-4 pt-3 text-xs text-muted" role="status">
+        {note}
+      </p>
+    );
+  }
+  const action = state === "conflict" ? "Recarregar" : state === "expired" ? "Entrar" : "Tentar de novo";
+  return (
+    <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-coral/40 bg-surface px-4 py-3 text-sm text-ink" role="alert">
+      <span>{note}</span>
+      <button type="button" className="press min-h-9 rounded-full border border-line px-3 text-sm hover:border-violet-2" onClick={onRetry}>
+        {action}
+      </button>
+    </div>
   );
 }
 
