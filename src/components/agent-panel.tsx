@@ -8,9 +8,9 @@ import { useStore } from "@/lib/store";
 import { Button, fieldClass } from "./ui";
 
 const prompts = [
-  "Gastei R$ 85 no mercado hoje",
-  "Quanto posso gastar por dia até o fim do mês?",
-  "Simule se eu guardar R$ 400 todo mês",
+  "Meu salário é R$ 5.400",
+  "100 reais de uber",
+  "100 reais no mercado",
 ];
 
 export function AgentPanel({ sheetId, compact = false }: { sheetId: string; compact?: boolean }) {
@@ -56,7 +56,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
           <div className={`flex-1 space-y-3 overflow-y-auto px-3 py-3 ${compact ? "max-h-72" : "min-h-48"}`}>
             {messages.length === 0 ? (
               <p className="text-sm leading-relaxed text-muted">
-                Estou na planilha {sheet.name}. Manda um gasto do jeito que você falaria: “Gastei R$ 85 no mercado hoje”.
+                Estou na planilha {sheet.name}. Vale “meu salário é R$ 5.400” ou “100 reais de uber”.
               </p>
             ) : (
               <AnimatePresence initial={false}>
@@ -99,7 +99,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
               id={`chat-${sheetId}${compact ? "-c" : ""}`}
               value={text}
               onChange={(event) => setText(event.target.value)}
-              placeholder="Gastei R$ 85 no mercado hoje"
+              placeholder="100 reais de uber, ou meu salário é R$ 5.400"
               className={fieldClass}
             />
             <Button type="submit">Enviar</Button>

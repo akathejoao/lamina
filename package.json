@@ -7,7 +7,7 @@
     "build": "next build && node scripts/migrate.mjs",
     "start": "next start -p 3847",
     "lint": "eslint",
-    "check": "node scripts/security-check.mjs && npx --yes tsx --test scripts/security.test.ts"
+    "check": "node scripts/security-check.mjs && npx --yes tsx --test scripts/security.test.ts scripts/agent.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",

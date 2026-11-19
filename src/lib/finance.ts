@@ -175,12 +175,23 @@ function brl(cents: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 }
 
+export function tidyTalk(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\burbe\b|\buberr?\b|\bubr\b/g, "uber")
+    .replace(/\bnetfli\w*\b/g, "netflix")
+    .replace(/\bspotfy\b|\bspotifi\w*\b/g, "spotify")
+    .replace(/\bifod\b|\bifoo\b/g, "ifood")
+    .replace(/\bmercad[oa]?\b/g, "mercado")
+    .replace(/\bfarm[aá]cia\b/g, "farmacia");
+}
+
 export function guessEntry(text: string): {
   type: EntryType;
   category: string;
   title: string;
 } {
-  const normalized = text.toLowerCase();
+  const normalized = tidyTalk(text);
   const rules: { test: RegExp; type: EntryType; category: string; title: string }[] = [
     { test: /sal[aá]rio/, type: "receita", category: "Salário", title: "Salário" },
     { test: /freelance|extra|bico/, type: "receita", category: "Extra", title: "Renda extra" },
@@ -188,9 +199,10 @@ export function guessEntry(text: string): {
     { test: /luz|energia|água|agua|internet|g[aá]s/, type: "fixo", category: "Contas", title: "Conta da casa" },
     { test: /mercado|padaria|feira|horti/, type: "variavel", category: "Mercado", title: "Mercado" },
     { test: /ifood|delivery|rappi|restaurante/, type: "variavel", category: "Delivery", title: "Delivery" },
-    { test: /uber|99\b|transporte|metrô|metro|ônibus|onibus/, type: "variavel", category: "Transporte", title: "Transporte" },
-    { test: /lazer|cinema|show|bar|festa|roupa/, type: "variavel", category: "Lazer", title: "Lazer" },
-    { test: /netflix|spotify|disney|youtube|streaming/, type: "assinatura", category: "Streaming", title: "Streaming" },
+    { test: /uber|99\b|transporte|metrô|metro|ônibus|onibus|combust[ií]vel/, type: "variavel", category: "Transporte", title: "Transporte" },
+    { test: /farm[aá]cia|rem[eé]dio|consulta|m[eé]dic/, type: "variavel", category: "Saúde", title: "Saúde" },
+    { test: /lazer|cinema|\bshow\b|\bbar\b|festa|roupa|\bcaf[eé]\b/, type: "variavel", category: "Lazer", title: "Lazer" },
+    { test: /netflix|spotify|disney|youtube|streaming|prime\b/, type: "assinatura", category: "Streaming", title: "Streaming" },
     { test: /academia|gym/, type: "assinatura", category: "Academia", title: "Academia" },
     { test: /icloud|software|assinatura/, type: "assinatura", category: "Software", title: "Assinatura" },
     { test: /reserva|aporte|investimento|tesouro|cdb/, type: "investimento", category: "Reserva", title: "Aporte" },

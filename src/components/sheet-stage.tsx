@@ -133,9 +133,9 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
         <div className="min-w-0 overflow-hidden rounded-2xl border border-line bg-surface p-4">
           <p className="kicker">Divisão do mês</p>
           <div className="mt-4 space-y-3">
-            <Split label="Essenciais" actual={numbers.essenciais} income={splitBase} target={split.essenciais / 100} accent={accent} />
-            <Split label="Estilo de vida" actual={numbers.estilo} income={splitBase} target={split.estilo / 100} accent={accent} />
-            <Split label="Futuro" actual={numbers.futuro} income={splitBase} target={split.futuro / 100} accent={accent} />
+            <Split label="Essenciais" actual={numbers.essenciais} income={splitBase} target={split.essenciais / 100} color={SLICE_COLOR.essenciais} delay={0} />
+            <Split label="Estilo de vida" actual={numbers.estilo} income={splitBase} target={split.estilo / 100} color={SLICE_COLOR.estilo} delay={0.08} />
+            <Split label="Futuro" actual={numbers.futuro} income={splitBase} target={split.futuro / 100} color={SLICE_COLOR.futuro} delay={0.16} />
           </div>
           <p className="mt-3 text-xs text-faint">
             {numbers.income > 0
@@ -144,7 +144,7 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
           </p>
         </div>
         <SliceChart essenciais={numbers.essenciais} estilo={numbers.estilo} futuro={numbers.futuro} />
-        <CategoryBars items={numbers.byCategory.slice(0, 6)} accent={accent} />
+        <CategoryBars items={numbers.byCategory.slice(0, 6)} />
       </div>
 
       <div className={`w-full min-w-0 max-w-full px-4 pb-6 ${compact ? "max-h-80 overflow-y-auto" : ""}`}>
@@ -275,35 +275,73 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
   );
 }
 
-function CategoryBars({ items, accent }: { items: { category: string; cents: number }[]; accent: string }) {
+const CATEGORY_COLOR: Record<string, string> = {
+  Moradia: "#7c5cff",
+  Contas: "#9b8cff",
+  Mercado: "#ff8aa0",
+  Transporte: "#7ec8ff",
+  Saúde: "#5ddec0",
+  Delivery: "#ffc56d",
+  Lazer: "#f0a3ff",
+  Streaming: "#ff6b8a",
+  Reserva: "#b6ffd2",
+  Academia: "#c4b6ff",
+  Software: "#8eb6ff",
+  Outros: "#d4c4a8",
+};
+
+function categoryColor(name: string): string {
+  const known = CATEGORY_COLOR[name];
+  if (known) return known;
+  const palette = ["#7c5cff", "#ff8aa0", "#ffc56d", "#7ec8ff", "#b6ffd2", "#f0a3ff"];
+  let hash = 0;
+  for (const char of name) hash = (hash * 33 + char.charCodeAt(0)) >>> 0;
+  return palette[hash % palette.length];
+}
+
+function CategoryBars({ items }: { items: { category: string; cents: number }[] }) {
   const reduce = useReducedMotion();
   const max = Math.max(...items.map((item) => item.cents), 1);
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-line bg-surface p-4">
       <p className="kicker">Por categoria</p>
       {items.length === 0 ? <p className="mt-4 text-sm text-muted">Sem gastos lançados.</p> : null}
-      <div className="mt-4 flex h-28 items-end gap-2 overflow-hidden">
+      <div className="mt-4 flex h-36 items-end gap-2 overflow-hidden">
         {items.map((item, index) => {
-          const height = Math.max(8, Math.round((item.cents / max) * 100));
+          const height = Math.max(12, Math.round((item.cents / max) * 100));
+          const color = categoryColor(item.category);
           return (
             <button
               key={item.category}
               type="button"
               title={`${item.category}: ${formatBRL(item.cents)}`}
               aria-label={`${item.category}: ${formatBRL(item.cents)}`}
-              className="flex h-full min-w-0 flex-1 items-end overflow-hidden"
+              className="flex h-full min-w-0 flex-1 flex-col justify-end overflow-hidden"
             >
               <motion.span
+                className="num mb-1 block truncate text-center text-[10px] text-muted"
+                initial={reduce ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduce ? 0 : 0.28, delay: reduce ? 0 : 0.18 + index * 0.07, ease: easeOut }}
+              >
+                {formatBRL(item.cents)}
+              </motion.span>
+              <motion.span
+                key={`${item.category}-${item.cents}`}
                 className="block w-full rounded-t-md"
                 style={{
-                  background: accent,
+                  background: `linear-gradient(180deg, ${color} 0%, color-mix(in srgb, ${color} 55%, #121018) 100%)`,
                   height: `${height}%`,
                   transformOrigin: "center bottom",
                   willChange: "transform",
                 }}
                 initial={reduce ? false : { scaleY: 0 }}
                 animate={{ scaleY: 1 }}
-                transition={{ duration: reduce ? 0 : 0.45, delay: reduce ? 0 : index * 0.04, ease: easeOut }}
+                transition={
+                  reduce
+                    ? { duration: 0 }
+                    : { type: "spring", stiffness: 120, damping: 16, delay: index * 0.07 }
+                }
               />
             </button>
           );
@@ -311,8 +349,9 @@ function CategoryBars({ items, accent }: { items: { category: string; cents: num
       </div>
       <div className="mt-2 flex gap-2 overflow-hidden">
         {items.map((item) => (
-          <span key={item.category} className="min-w-0 flex-1 truncate text-center text-[10px] text-faint">
-            {item.category}
+          <span key={item.category} className="flex min-w-0 flex-1 items-center justify-center gap-1 text-[10px] text-faint">
+            <span className="size-1.5 shrink-0 rounded-full" style={{ background: categoryColor(item.category) }} />
+            <span className="truncate">{item.category}</span>
           </span>
         ))}
       </div>
@@ -340,13 +379,15 @@ function Split({
   actual,
   income,
   target,
-  accent,
+  color,
+  delay,
 }: {
   label: string;
   actual: number;
   income: number;
   target: number;
-  accent: string;
+  color: string;
+  delay: number;
 }) {
   const reduce = useReducedMotion();
   const ratio = income > 0 ? actual / income : 0;
@@ -354,7 +395,10 @@ function Split({
   return (
     <div className="min-w-0">
       <div className="mb-1 flex min-w-0 items-baseline justify-between gap-3 text-sm">
-        <span className="min-w-0 truncate">{label}</span>
+        <span className="flex min-w-0 items-center gap-2 truncate">
+          <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />
+          {label}
+        </span>
         <span className="num shrink-0 text-muted">
           {formatBRL(actual)} · {Math.round(ratio * 100)}%
         </span>
@@ -362,10 +406,10 @@ function Split({
       <div className="relative h-2 overflow-hidden rounded-full bg-canvas">
         <motion.div
           className="h-2 rounded-full"
-          style={{ background: accent, transformOrigin: "left center", willChange: "transform" }}
+          style={{ background: color, transformOrigin: "left center", willChange: "transform" }}
           initial={reduce ? false : { scaleX: 0 }}
           animate={{ scaleX: scale }}
-          transition={{ duration: reduce ? 0 : 0.45, ease: easeOut }}
+          transition={{ duration: reduce ? 0 : 0.5, delay: reduce ? 0 : delay, ease: easeOut }}
         />
         <span className="pointer-events-none absolute top-[-3px] h-3.5 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} />
       </div>
