@@ -1,13 +1,14 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { SliceChart } from "./slice-chart";
 import { SheetForm } from "./sheet-form";
+import { decodeCsvBytes, entriesToCsv } from "@/lib/csv";
 import { bucketOf, mathFor } from "@/lib/finance";
 import { formatBRL, formatDay, monthKey, parseMoney, todayISO } from "@/lib/money";
 import { easeOut } from "@/lib/motion";
-import { ACCENT_COLOR, accentOf, categoriesOf, draftFromSheet, SLICE_COLOR, splitOf } from "@/lib/sheets";
+import { ACCENT_COLOR, accentOf, categoriesOf, draftFromSheet, SLICE_COLOR, SLICE_LABEL, splitOf } from "@/lib/sheets";
 import { useStore } from "@/lib/store";
 import { ENTRY_LABEL, KIND_LABEL, type Entry, type EntryType, type Sheet, type SliceKey } from "@/lib/types";
 import { Button, Field, Modal, fieldClass } from "./ui";
@@ -45,19 +46,57 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
   const saved = numbers.invested;
   const target = sheet.targetCents ?? 0;
   const bucketByCategory = new Map<string, SliceKey>();
+  const sliceCategories: Record<SliceKey, Map<string, number>> = { essenciais: new Map(), estilo: new Map(), futuro: new Map() };
   for (const entry of entries) {
     const bucket = bucketOf(entry, sheet);
-    if (bucket && !bucketByCategory.has(entry.category)) bucketByCategory.set(entry.category, bucket);
+    if (!bucket) continue;
+    if (!bucketByCategory.has(entry.category)) bucketByCategory.set(entry.category, bucket);
+    sliceCategories[bucket].set(entry.category, (sliceCategories[bucket].get(entry.category) ?? 0) + entry.cents);
   }
+  const topBySlice = (key: SliceKey) =>
+    [...sliceCategories[key].entries()]
+      .map(([category, cents]) => ({ category, cents }))
+      .sort((a, b) => b.cents - a.cents)
+      .slice(0, 3);
+  const fixedCount = entries.filter((entry) => entry.type === "fixo").length;
+  const subscriptionCount = entries.filter((entry) => entry.type === "assinatura").length;
 
   const remove = (entry: Entry) => {
     removeEntry(entry.id);
     setRemoved(entry);
   };
 
+  const exportCsv = () => {
+    if (entries.length === 0) {
+      setNotice("Nada para exportar nesta planilha.");
+      return;
+    }
+    const slug =
+      sheet.name
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "planilha";
+    const blob = new Blob([entriesToCsv([...entries].reverse())], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `lamina-${slug}-${sheet.month ?? todayISO()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setNotice("Planilha exportada em CSV para o Excel.");
+  };
+
   const importFile = async (file: File) => {
+    if (/\.xlsx?$/i.test(file.name)) {
+      setNotice("Arquivos do Excel (.xlsx) precisam ser salvos como CSV: no Excel, Arquivo, Salvar como, CSV UTF-8.");
+      return;
+    }
     const { readCsv } = await import("@/lib/finance");
-    const { rows, skipped } = readCsv(await file.text());
+    const { rows, skipped } = readCsv(decodeCsvBytes(await file.arrayBuffer()));
     if (!rows.length) {
       setNotice("O CSV precisa das colunas descricao e valor.");
       return;
@@ -106,7 +145,7 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,text/csv,.xlsx,.xls"
             className="sr-only"
             tabIndex={-1}
             aria-hidden="true"
@@ -130,6 +169,7 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
                     },
                   ]
                 : []),
+              { label: "Exportar CSV (Excel)", onSelect: exportCsv },
               { label: "Arquivar", danger: true, onSelect: () => setConfirm("arquivar") },
               { label: "Limpar lançamentos", danger: true, onSelect: () => setConfirm("limpar") },
             ]}
@@ -165,17 +205,71 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
       </div>
 
       <div className="grid min-w-0 gap-4 px-4 pb-4 @2xl:grid-cols-2 @5xl:grid-cols-[1.1fr_0.9fr_1fr]">
-        <div className="min-w-0 rounded-2xl border border-line bg-surface p-4 @2xl:col-span-2 @5xl:col-span-1">
+        <div className="@container min-w-0 rounded-2xl border border-line bg-surface p-4 @2xl:col-span-2 @5xl:col-span-1">
           <p className="kicker">Divisão do mês</p>
-          <div className="mt-4 space-y-3">
-            <Split label="Essenciais" actual={numbers.essenciais} income={splitBase} target={split.essenciais / 100} color={SLICE_COLOR.essenciais} delay={0} />
-            <Split label="Estilo de vida" actual={numbers.estilo} income={splitBase} target={split.estilo / 100} color={SLICE_COLOR.estilo} delay={0.06} />
-            <Split label="Futuro" actual={numbers.futuro} income={splitBase} target={split.futuro / 100} color={SLICE_COLOR.futuro} delay={0.12} />
+          <dl className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-x-4 gap-y-2">
+            <Fact label="Renda do mês" value={formatBRL(numbers.income)} />
+            <Fact label="Gasto" value={formatBRL(numbers.burn)} />
+            <Fact label="Guardado" value={formatBRL(numbers.futuro)} />
+            <Fact label="Livre" value={formatBRL(numbers.free)} tone={numbers.free < 0 ? "text-coral" : undefined} />
+          </dl>
+          {numbers.income <= 0 ? (
+            <p className="mt-4 rounded-xl border border-dashed border-line px-3 py-2 text-sm leading-relaxed text-muted">
+              Lance primeiro a renda do mês para calcular o plano de cada fatia. Pelo agente, escreva “meu salário é R$ 5.400” ou “vale alimentação de 350 reais”.
+            </p>
+          ) : null}
+          <div className="mt-4 grid gap-5 @xl:grid-cols-3">
+            {(["essenciais", "estilo", "futuro"] as const).map((key, index) => {
+              const used = numbers[key];
+              const percent = split[key];
+              const plan = Math.round((numbers.income * percent) / 100);
+              const diff = plan - used;
+              const top = topBySlice(key);
+              return (
+                <Split
+                  key={key}
+                  label={SLICE_LABEL[key]}
+                  actual={used}
+                  income={splitBase}
+                  target={percent / 100}
+                  color={SLICE_COLOR[key]}
+                  delay={index * 0.06}
+                  suffix={numbers.income > 0 ? " da renda" : " das saídas"}
+                >
+                  <p className="mt-2 text-sm text-muted">
+                    {numbers.income > 0 ? (
+                      <>
+                        Plano {percent}%: <span className="num">{formatBRL(plan)}</span>
+                      </>
+                    ) : (
+                      <>Plano {percent}% da renda</>
+                    )}
+                  </p>
+                  {numbers.income > 0 ? (
+                    <p className={`text-sm ${diff < 0 ? "text-coral" : "text-muted"}`}>
+                      {diff < 0 ? "Passou " : "Cabe ainda "}
+                      <span className="num">{formatBRL(Math.abs(diff))}</span>
+                    </p>
+                  ) : null}
+                  {top.length === 0 ? (
+                    <p className="mt-2 text-xs text-muted">Nada lançado nesta fatia</p>
+                  ) : (
+                    <ul className="mt-2 space-y-1">
+                      {top.map((item) => (
+                        <li key={item.category} className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted">
+                          <span className="min-w-0 break-words">{item.category}</span>
+                          <span className="num">{formatBRL(item.cents)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Split>
+              );
+            })}
           </div>
-          <p className="mt-3 text-xs leading-relaxed text-muted">
-            {numbers.income > 0
-              ? `A marca fina é a divisão que você escolheu, ${split.essenciais}/${split.estilo}/${split.futuro}. A barra é o que já saiu de ${formatBRL(numbers.income)}.`
-              : `A marca fina continua sendo ${split.essenciais}/${split.estilo}/${split.futuro}. Sem entradas, a barra mostra só a proporção do que saiu.`}
+          <p className="mt-4 text-xs leading-relaxed text-muted">
+            {entries.length} {entries.length === 1 ? "lançamento" : "lançamentos"}, {fixedCount} {fixedCount === 1 ? "fixo" : "fixos"}, {subscriptionCount}{" "}
+            {subscriptionCount === 1 ? "assinatura" : "assinaturas"}. A marca fina na barra é a divisão que você escolheu, {split.essenciais}/{split.estilo}/{split.futuro}.
           </p>
         </div>
         <SliceChart essenciais={numbers.essenciais} estilo={numbers.estilo} futuro={numbers.futuro} />
@@ -429,6 +523,8 @@ export function Split({
   target,
   color,
   delay,
+  suffix = "",
+  children,
 }: {
   label: string;
   actual: number;
@@ -436,6 +532,8 @@ export function Split({
   target: number;
   color: string;
   delay: number;
+  suffix?: string;
+  children?: ReactNode;
 }) {
   const reduce = useReducedMotion();
   const ratio = income > 0 ? actual / income : 0;
@@ -448,7 +546,7 @@ export function Split({
           {label}
         </span>
         <span className="num text-muted">
-          {formatBRL(actual)}, {Math.round(ratio * 100)}%
+          {formatBRL(actual)}, {Math.round(ratio * 100)}%{suffix}
         </span>
       </div>
       <div className="relative h-2 rounded-full bg-canvas">
@@ -461,6 +559,16 @@ export function Split({
         />
         <span className="pointer-events-none absolute top-[-3px] h-3.5 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} aria-hidden="true" />
       </div>
+      {children}
+    </div>
+  );
+}
+
+function Fact({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="kicker">{label}</dt>
+      <dd className={`num mt-0.5 text-sm ${tone ?? "text-ink"}`}>{value}</dd>
     </div>
   );
 }
