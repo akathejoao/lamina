@@ -270,6 +270,8 @@ let accountVersion = 0;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let inflight = false;
 let dirty = false;
+let lastSave: SaveState = "ok";
+let generation = 0;
 
 const SAVE_NOTE: Record<SaveState, string> = {
   ok: "Salva na conta",
@@ -280,7 +282,11 @@ const SAVE_NOTE: Record<SaveState, string> = {
 };
 
 // Um salvamento por vez, sempre com a versão que o servidor devolveu por último.
-async function runSave(onState: (state: SaveState) => void, onBlocked: () => void): Promise<void> {
+async function runSave(report: (state: SaveState) => void, onBlocked: () => void): Promise<void> {
+  const onState = (state: SaveState) => {
+    lastSave = state;
+    report(state);
+  };
   if (!accountLedger) return;
   if (inflight) {
     dirty = true;
@@ -315,7 +321,23 @@ async function runSave(onState: (state: SaveState) => void, onBlocked: () => voi
   } finally {
     inflight = false;
   }
-  if (dirty) void runSave(onState, onBlocked);
+  if (dirty) await runSave(report, onBlocked);
+}
+
+// Salva na hora o que estiver pendente (atraso de 400 ms, gravação em curso ou
+// mudança que chegou durante ela) e espera terminar. Usado antes de sair e quando
+// o app deixa de existir na tela, para nenhuma edição, como a foto do perfil, se perder.
+async function drainSaves(report: (state: SaveState) => void, onBlocked: () => void): Promise<SaveState> {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    dirty = true;
+  }
+  for (let i = 0; i < 100 && (inflight || dirty); i += 1) {
+    if (!inflight && dirty) await runSave(report, onBlocked);
+    else await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return lastSave;
 }
 
 export function AccountStoreProvider({ children }: { children: ReactNode }) {
@@ -327,7 +349,11 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
   const [saveState, setSaveState] = useState<SaveState>("ok");
 
   const logout = useCallback(async () => {
+    const saved = await drainSaves(setSaveState, () => setBlocked(true));
+    if (saved !== "ok" && !window.confirm("A última mudança ainda não foi salva na conta. Sair mesmo assim?")) return;
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    generation += 1;
+    accountLedger = null;
     router.push("/");
   }, [router]);
 
@@ -357,6 +383,7 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
           return;
         }
         const clean = scrubLedger(body.ledger);
+        generation += 1;
         accountLedger = clean;
         accountVersion = body.version;
         setLedger(clean);
@@ -368,7 +395,12 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
       });
     return () => {
       live = false;
-      accountLedger = null;
+      const mine = generation;
+      // Sair do app sem passar por Sair (um link para fora, por exemplo) não pode
+      // descartar a gravação pendente: salva primeiro e só então esquece a planilha.
+      void drainSaves(() => undefined, () => undefined).then(() => {
+        if (generation === mine) accountLedger = null;
+      });
     };
   }, [router]);
 

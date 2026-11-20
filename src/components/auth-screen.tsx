@@ -75,7 +75,8 @@ export function AuthScreen({ mode }: { mode: "entrar" | "criar" }) {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-10">
+    <div className="relative h-dvh overflow-y-auto">
+    <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-4 py-10">
       <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm text-muted">
         <Mark className="size-7" />
         Lâmina
@@ -163,5 +164,6 @@ export function AuthScreen({ mode }: { mode: "entrar" | "criar" }) {
         )}
       </p>
     </main>
+    </div>
   );
 }

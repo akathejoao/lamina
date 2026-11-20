@@ -4,7 +4,8 @@ import { Mark } from "@/components/mark";
 
 export default function DownloadPage() {
   return (
-    <main className="mx-auto min-h-dvh max-w-3xl px-4 py-10">
+    <div className="relative h-dvh overflow-y-auto">
+    <main className="mx-auto min-h-full max-w-3xl px-4 py-10">
       <Installer />
       <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted">
         <Mark className="size-7" />
@@ -27,5 +28,6 @@ export default function DownloadPage() {
         Prefere o navegador? Abrir o app
       </Link>
     </main>
+    </div>
   );
 }

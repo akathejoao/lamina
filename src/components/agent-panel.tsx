@@ -40,8 +40,8 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
   };
 
   return (
-    <aside className="flex h-full min-h-0 flex-1 flex-col bg-canvas-2" aria-label="Agente">
-      <div className="flex items-center gap-2 border-b border-line px-3 py-3" role="tablist" aria-label="Agente e dicas">
+    <aside className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas-2" aria-label="Agente">
+      <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-3" role="tablist" aria-label="Agente e dicas">
         <button
           type="button"
           role="tab"
@@ -65,7 +65,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
         <>
           <div
             ref={list}
-            className={`min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 ${compact ? "max-h-72 lg:max-h-none" : "min-h-48"}`}
+            className={`relative min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 ${compact ? "max-h-72 lg:max-h-none" : ""}`}
             aria-live="polite"
             aria-relevant="additions"
           >
@@ -92,7 +92,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
               </AnimatePresence>
             )}
           </div>
-          <div className="flex flex-wrap gap-2 px-3 pt-2 pb-2">
+          <div className="flex shrink-0 flex-wrap gap-2 px-3 pt-2 pb-2">
             {prompts.map((prompt) => (
               <button
                 key={prompt}
@@ -107,7 +107,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
               </button>
             ))}
           </div>
-          <form onSubmit={submit} className="flex gap-2 border-t border-line p-3">
+          <form onSubmit={submit} className="flex shrink-0 gap-2 border-t border-line p-3">
             <label className="sr-only" htmlFor={inputId}>
               Mensagem para o agente
             </label>

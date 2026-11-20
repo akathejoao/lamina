@@ -44,10 +44,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
       <SideContext.Provider value={sideSlot}>
-        <div className="min-h-dvh bg-canvas text-ink">
-          <div className="flex min-h-dvh">
-            <nav className="sticky top-0 hidden h-dvh w-16 shrink-0 flex-col items-center gap-3 border-r border-line py-4 md:flex" aria-label="App">
-              <Link href="/" aria-label="Lâmina, página inicial" className="mb-4">
+        <div className="relative h-dvh overflow-hidden bg-canvas text-ink">
+          <div className="flex h-full min-h-0">
+            <nav className="hidden h-full w-16 shrink-0 flex-col items-center gap-3 border-r border-line py-4 md:flex" aria-label="App">
+              <Link href={scope === "conta" ? "/app" : "/"} aria-label={scope === "conta" ? "Lâmina, início do app" : "Lâmina, página inicial"} className="mb-4">
                 <Mark />
               </Link>
               <RailLink href="/app" label="Início" active={pathname === "/app"}>
@@ -73,17 +73,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </button>
               ) : null}
             </nav>
-            <div className="flex min-w-0 flex-1 flex-col md:flex-row">
-              <div className="min-w-0 flex-1 pb-24 md:pb-0">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 {scope === "conta" ? <SaveStatus state={saveState} note={saveNote} onRetry={retrySave} /> : null}
-                {children}
+                <div className="min-h-0 flex-1 overflow-y-auto pb-24 md:pb-0">{children}</div>
               </div>
-              <div className={hasSide ? `${agentOpen ? "fixed inset-0 z-40 flex md:static md:inset-auto" : "hidden md:flex"} md:max-h-dvh md:w-[340px] md:shrink-0 md:overflow-y-auto md:border-l md:border-line` : "hidden"}>
-                <div className="flex w-full flex-col bg-canvas">
-                  <button type="button" className="px-4 py-3 text-left text-sm text-muted md:hidden" onClick={() => setAgentPath(null)}>
+              <div className={hasSide ? `${agentOpen ? "fixed inset-0 z-40 flex md:static md:inset-auto" : "hidden md:flex"} md:h-full md:min-h-0 md:w-[340px] md:shrink-0 md:overflow-hidden md:border-l md:border-line` : "hidden"}>
+                <div className="flex h-full min-h-0 w-full flex-col bg-canvas">
+                  <button type="button" className="shrink-0 px-4 py-3 text-left text-sm text-muted md:hidden" onClick={() => setAgentPath(null)}>
                     Fechar painel
                   </button>
-                  <div ref={setSideElement} className="min-h-0 flex-1" />
+                  <div ref={setSideElement} className="min-h-0 flex-1 overflow-y-auto" />
                 </div>
               </div>
             </div>
@@ -162,14 +162,14 @@ function MobileFace({ label, active }: { label: string; active: boolean }) {
 function SaveStatus({ state, note, onRetry }: { state: SaveState; note: string | null; onRetry: () => void }) {
   if (state === "ok" || state === "saving") {
     return (
-      <p className="px-4 pt-3 text-xs text-muted" role="status">
+      <p className="shrink-0 px-4 pt-3 text-xs text-muted" role="status">
         {note}
       </p>
     );
   }
   const action = state === "conflict" ? "Recarregar" : state === "expired" ? "Entrar" : "Tentar de novo";
   return (
-    <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-coral/40 bg-surface px-4 py-3 text-sm text-ink" role="alert">
+    <div className="mx-4 mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-coral/40 bg-surface px-4 py-3 text-sm text-ink" role="alert">
       <span>{note}</span>
       <button type="button" className="press min-h-9 rounded-full border border-line px-3 text-sm hover:border-violet-2" onClick={onRetry}>
         {action}
