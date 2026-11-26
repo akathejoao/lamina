@@ -46,7 +46,11 @@ export function InstallButton() {
       >
         Instalar no Windows
       </Button>
-      {message ? <p className="mt-3 max-w-md text-sm text-muted">{message}</p> : null}
+      {message ? (
+        <p className="mt-4 max-w-md border-l-2 border-line pl-3 text-sm leading-relaxed text-muted" role="status">
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }

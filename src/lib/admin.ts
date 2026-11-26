@@ -35,3 +35,11 @@ export async function syncAdminRole(email: string): Promise<void> {
   const role = isDesignatedAdmin(normalized) ? "admin" : "user";
   await sql(`update users set role = $1 where email = $2 and role <> $1`, [role, normalized]);
 }
+
+// Só diz que existe um código de administração a quem já mandou o campo do código
+// (ou ao desenvolvimento local). Sondagem sem o campo recebe a recusa genérica.
+export function mayRevealAdminCode(body: Record<string, unknown> | null): boolean {
+  if (!isHosted()) return true;
+  const sent = body?.adminCode;
+  return typeof sent === "string" && sent.trim() !== "";
+}

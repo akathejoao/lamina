@@ -2,12 +2,16 @@ import { requireActive } from "@/lib/access";
 import { decryptJson, encryptJson } from "@/lib/crypto";
 import { sql } from "@/lib/db";
 import { isLedger, scrubLedger } from "@/lib/fresh";
-import { asRecord, jsonBody, jsonError, readJson } from "@/lib/guard";
+import { asRecord, jsonBody, jsonError, readJsonResult } from "@/lib/guard";
 import { readSession, sameOrigin } from "@/lib/session";
 import type { LedgerState } from "@/lib/types";
+import { validateLedger } from "@/lib/validate";
 
 type LedgerRow = { ciphertext: string; version: number };
 type ConsentRow = { consent_at: string; terms_version: string };
+
+const MAX_VERSION = 2_000_000_000;
+const TOO_LARGE = "A planilha passou do tamanho que a conta guarda.";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,16 +55,23 @@ export async function PUT(request: Request) {
   if (gate instanceof Response) return gate;
   // O corpo leva a versão que o aparelho abriu. Se outra aba ou aparelho salvou antes,
   // a versão mudou e a gravação é recusada com 409, em vez de apagar o trabalho do outro.
-  const body = asRecord(await readJson(request, 1_600_000));
-  if (!body) return jsonError(413, "A planilha passou do tamanho que a conta guarda.");
+  const read = await readJsonResult(request, 1_600_000);
+  if (!read.ok) {
+    if (read.reason === "too_large") return jsonError(413, TOO_LARGE);
+    return jsonError(400, "Pedido inválido. Recarregue a página e tente de novo.");
+  }
+  const body = asRecord(read.value);
+  if (!body) return jsonError(400, "Pedido inválido. Recarregue a página e tente de novo.");
   const version = body.version;
-  if (typeof version !== "number" || !Number.isInteger(version) || version < 0) {
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 0 || version > MAX_VERSION) {
     return jsonError(400, "Falta a versão da planilha. Recarregue a página.");
   }
   if (!isLedger(body.ledger)) return jsonError(400, "Planilha inválida.");
-  const clean = scrubLedger(body.ledger);
+  const checked = validateLedger(body.ledger);
+  if (!checked.ok) return jsonError(400, checked.message);
+  const clean = scrubLedger(checked.ledger);
   const encoded = JSON.stringify(clean);
-  if (encoded.length > 1_500_000) return jsonError(413, "A planilha passou do tamanho que a conta guarda.");
+  if (encoded.length > 1_500_000) return jsonError(413, TOO_LARGE);
   const ciphertext = encryptJson(session.dek, clean);
   const saved = await sql<{ version: number }>(
     `update ledgers set ciphertext = $1, updated_at = now(), version = version + 1 where user_id = $2 and version = $3 returning version`,

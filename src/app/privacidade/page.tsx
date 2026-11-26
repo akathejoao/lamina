@@ -24,9 +24,9 @@ export default function PrivacyPage() {
         O operador de hospedagem processa o banco como operador, para manter o serviço no ar. Não há compartilhamento com redes de anúncio. Um pedido legal dirigido ao controlador pode obrigar a entrega do que estiver em poder dele; a planilha em texto aberto não está no banco.
       </p>
       <h2>Por quanto tempo</h2>
-      <p>Enquanto a conta existir. Ao apagar a conta, com a senha, o cadastro e a planilha cifrada são excluídos. Cópias de segurança do operador, se existirem, seguem o prazo da hospedagem e não são usadas para outro fim.</p>
+      <p>Enquanto a conta existir. Ao apagar a conta, com a senha, o cadastro e a planilha cifrada são excluídos. Depois disso, cópias de segurança do provedor do banco podem guardar esses dados por um período limitado, definido por ele, e não são usadas para outro fim.</p>
       <h2>Os seus direitos</h2>
-      <p>Acesso e portabilidade: em Perfil, exporte um arquivo JSON da planilha já aberta.</p>
+      <p>Acesso e portabilidade: em Perfil, exporte um arquivo JSON com os dados da conta (nome, e-mail, datas e versões do consentimento, situação de acesso e nota do administrador) e com a planilha. Conta bloqueada também pode exportar, com e-mail e senha.</p>
       <p>Correção: edite nome, foto e lançamentos na própria conta. O e-mail identifica a conta e não muda por aqui.</p>
       <p>Eliminação e revogação do consentimento: apague a conta em Perfil. Isso não pode ser desfeito e a planilha deixa de ser recuperável.</p>
       <p>Informação sobre o tratamento: este aviso. Outros pedidos previstos na LGPD devem ser dirigidos ao controlador desta cópia.</p>
@@ -39,7 +39,7 @@ export default function PrivacyPage() {
       <h2>Cookie</h2>
       <p>Um cookie httpOnly, chamado lamina_session, identifica a sessão por 14 dias. A chave da planilha só vai nesse cookie cifrada com o segredo do servidor. Não usamos cookie de rastreamento.</p>
       <p>
-        <Link href="/termos" className="text-violet-2">Ler os termos de uso</Link>
+        <Link href="/termos" className="inline-flex min-h-10 items-center text-violet-2 hover:text-ink">Ler os termos de uso</Link>
       </p>
     </LegalShell>
   );

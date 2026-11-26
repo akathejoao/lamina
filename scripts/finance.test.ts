@@ -2,9 +2,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { interpret } from "../src/lib/agent";
 import { decodeCsvBytes, entriesToCsv } from "../src/lib/csv";
-import { mathFor, readCsv, tips } from "../src/lib/finance";
+import {
+  addEntryTo,
+  duplicateMonthIn,
+  health,
+  mathFor,
+  readCsv,
+  removeEntries,
+  restoreEntryTo,
+  sheetHeadline,
+  streak,
+  tips,
+  updateGoalIn,
+} from "../src/lib/finance";
 import { freshLedger } from "../src/lib/fresh";
-import { seedState, NOVEMBER } from "../src/lib/seed";
+import { todayISO } from "../src/lib/money";
+import { buildSeed, seedState, NOVEMBER } from "../src/lib/seed";
 import type { Entry, LedgerState } from "../src/lib/types";
 
 const state = freshLedger("Ana");
@@ -71,7 +84,7 @@ test("cada lançamento cai em um só balde e o Livre fecha", () => {
 test("a dica não promete prazo que ninguém calculou", () => {
   const seedNov = seedState.sheets.find((item) => item.id === NOVEMBER);
   assert.ok(seedNov);
-  for (const line of tips(seedState, seedNov, "2026-11-19")) assert.doesNotMatch(line, /semanas/);
+  for (const line of tips(seedState, seedNov, todayISO())) assert.doesNotMatch(line, /semanas/);
 });
 
 test("decodeCsvBytes lê Windows-1252 do Excel e UTF-8 com BOM", () => {
@@ -199,4 +212,268 @@ test("o CSV exportado para o Excel abre igual na volta", () => {
   const decoded = decodeCsvBytes(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   assert.equal(readCsv(decoded).rows.length, entries.length);
   assert.equal(entriesToCsv([]), "﻿Data;Descrição;Tipo;Categoria;Valor;Vence dia;Parcela\r\n");
+});
+
+// ---- Dicas, termômetro, sequência, cartão da tela inicial ----
+
+function ledgerWith(entries: Partial<Entry>[], goals?: LedgerState["goals"], now = "2026-11-20"): { ledger: LedgerState; sheet: LedgerState["sheets"][number]; now: string } {
+  const base = freshLedger("Ana");
+  const sheet = { ...base.sheets[0], id: "s", month: now.slice(0, 7) };
+  const full = entries.map((item, index) => ({
+    id: `x${index}`,
+    sheetId: "s",
+    type: "variavel" as const,
+    title: "Item",
+    category: "Outros",
+    cents: 100,
+    date: `${now.slice(0, 7)}-05`,
+    dueDay: null,
+    installment: null,
+    ...item,
+  }));
+  return { ledger: { ...base, sheets: [sheet], entries: full, goals: goals ?? base.goals }, sheet, now };
+}
+
+test("as dicas vêm em ordem de importância, no máximo seis, e só citam número calculado", () => {
+  const { ledger, sheet, now } = ledgerWith([
+    { type: "receita", title: "Salário", category: "Salário", cents: 300_000 },
+    { type: "fixo", title: "Aluguel", category: "Moradia", cents: 250_000 },
+    { type: "variavel", title: "Lazer", category: "Lazer", cents: 200_000 },
+  ]);
+  const lines = tips(ledger, sheet, now);
+  assert.ok(lines.length >= 1 && lines.length <= 6);
+  assert.match(lines[0], /no vermelho/);
+  assert.match(lines[0], /R\$\s?1\.500,00/);
+  for (const line of lines) {
+    assert.doesNotMatch(line, /semanas|—|–/);
+  }
+});
+
+test("cada regra de dica só aparece quando a condição vale e cita o número", () => {
+  const first = (entries: Partial<Entry>[], pattern: RegExp, goals?: LedgerState["goals"], now = "2026-11-20") => {
+    const { ledger, sheet } = ledgerWith(entries, goals, now);
+    const lines = tips(ledger, sheet, now);
+    const hit = lines.find((line) => pattern.test(line));
+    return { hit, lines };
+  };
+  const salary: Partial<Entry> = { type: "receita", title: "Salário", category: "Salário", cents: 1_000_000 };
+
+  const blank = ledgerWith([]);
+  assert.match(tips(blank.ledger, blank.sheet, blank.now)[0], /ainda não tem lançamentos/);
+
+  const noIncome = first([{ type: "variavel", category: "Mercado", cents: 12_300 }], /Ainda não há receita lançada/);
+  assert.match(noIncome.hit ?? "", /R\$\s?123,00/);
+
+  const dues = first([salary, { type: "fixo", title: "Luz", category: "Contas", cents: 18_000, dueDay: 22 }, { type: "fixo", title: "Água", category: "Contas", cents: 9_000, dueDay: 25 }], /próximos 7 dias/);
+  assert.match(dues.hit ?? "", /Luz \(dia 22, R\$\s?180,00\)/);
+  assert.match(dues.hit ?? "", /Soma R\$\s?270,00/);
+  assert.equal(first([salary, { type: "fixo", title: "Luz", category: "Contas", cents: 18_000, dueDay: 29 }], /próximos 7 dias/).hit, undefined);
+
+  const over = first([salary, { type: "fixo", title: "Aluguel", category: "Moradia", cents: 700_000 }], /Essenciais já leva 70%/);
+  assert.match(over.hit ?? "", /plano da planilha é 50%/);
+  assert.match(over.hit ?? "", /R\$\s?2\.000,00 acima/);
+
+  const futuro = first([salary, { type: "investimento", title: "Aporte", category: "Reserva", cents: 50_000 }], /Futuro está em/);
+  assert.match(futuro.hit ?? "", /R\$\s?500,00/);
+  assert.match(futuro.hit ?? "", /R\$\s?2\.000,00/);
+  assert.match(futuro.hit ?? "", /Faltam R\$\s?1\.500,00/);
+
+  const pace = first([salary, { type: "variavel", category: "Lazer", cents: 600_000 }], /ritmo dos 20 primeiros dias/);
+  assert.match(pace.hit ?? "", /R\$\s?9\.000,00/);
+
+  const concentrated = first([salary, { type: "variavel", category: "Lazer", cents: 100_000 }, { type: "variavel", category: "Mercado", cents: 50_000 }], /concentra/);
+  assert.match(concentrated.hit ?? "", /Lazer concentra 67%/);
+
+  const delivery = first([salary, { type: "variavel", category: "Delivery", cents: 30_000 }, { type: "variavel", category: "Mercado", cents: 40_000 }], /^Delivery soma/);
+  assert.match(delivery.hit ?? "", /R\$\s?300,00 no ciclo, 75% do que foi no Mercado/);
+  assert.match(delivery.hit ?? "", /R\$\s?3\.600,00/);
+  assert.equal(first([salary, { type: "variavel", category: "Delivery", cents: 10_000 }], /^Delivery soma/).hit, undefined);
+
+  const subs = first([salary, { type: "assinatura", title: "Netflix", category: "Streaming", cents: 5_590 }, { type: "assinatura", title: "Spotify", category: "Streaming", cents: 2_190 }], /assinaturas somam/);
+  assert.match(subs.hit ?? "", /2 assinaturas somam R\$\s?77,80/);
+  assert.match(subs.hit ?? "", /R\$\s?933,60/);
+
+  const small = first([salary, { type: "assinatura", title: "iCloud", category: "Software", cents: 1_490 }], /parece pequena/);
+  assert.match(small.hit ?? "", /iCloud parece pequena, mas soma R\$\s?178,80 por ano/);
+
+  const lazer = first([salary, { type: "variavel", category: "Lazer", cents: 20_000 }], /Reduzir 15%/);
+  assert.match(lazer.hit ?? "", /R\$\s?30,00/);
+  assert.equal(first([salary, { type: "variavel", category: "Lazer", cents: 5_000 }], /Reduzir 15%/).hit, undefined);
+
+  const parcela = first([salary, { type: "fixo", title: "Notebook", category: "Contas", cents: 31_000, installment: { current: 3, total: 12 } }], /parcela 3\/12/);
+  assert.match(parcela.hit ?? "", /R\$\s?2\.790,00 em parcelas/);
+  assert.equal(first([salary, { type: "fixo", title: "Notebook", category: "Contas", cents: 31_000, installment: { current: 12, total: 12 } }], /parcela/).hit, undefined);
+
+  const reserve = (savedCents: number, targetCents: number): LedgerState["goals"] => [{ id: "goal-reserva", name: "Reserva de emergência", targetCents, savedCents, note: "" }];
+  const months = first([salary, { type: "investimento", title: "Aporte", category: "Reserva", cents: 100_000 }], /Reserva de emergência está em/, reserve(400_000, 1_000_000));
+  assert.match(months.hit ?? "", /40%/);
+  assert.match(months.hit ?? "", /faltam 6 meses/);
+  assert.match(first([salary], /Reserva de emergência está em/, reserve(400_000, 1_000_000)).hit ?? "", /nada foi guardado neste ciclo/);
+  assert.match(first([salary], /ainda não está definida/, reserve(0, 0)).hit ?? "", /Perfil/);
+
+  const single = first([salary], /vem de uma fonte só/);
+  assert.match(single.hit ?? "", /100% da renda de R\$\s?10\.000,00 vem de uma fonte só, Salário/);
+  assert.equal(first([salary, { type: "receita", title: "Freela", category: "Extra", cents: 500_000 }], /vem de uma fonte só/).hit, undefined);
+
+  const big = first([salary, { type: "variavel", title: "Viagem", category: "Lazer", cents: 300_000 }], /maior gasto variável/);
+  assert.match(big.hit ?? "", /Viagem foi o maior gasto variável: R\$\s?3\.000,00, 30% da renda/);
+
+  const spare = first([salary, { type: "variavel", category: "Mercado", cents: 100_000 }], /Sobraram/);
+  assert.match(spare.hit ?? "", /Sobraram R\$\s?9\.000,00, 90% da renda/);
+
+  const daily = first([salary, { type: "variavel", category: "Mercado", cents: 100_000 }], /por dia/);
+  assert.match(daily.hit ?? "", /R\$\s?818,18 por dia/);
+});
+
+test("a pool de dicas tem pelo menos quinze regras e não passa de seis linhas", () => {
+  const { ledger, sheet, now } = ledgerWith([
+    { type: "receita", title: "Salário", category: "Salário", cents: 1_000_000 },
+    { type: "fixo", title: "Aluguel", category: "Moradia", cents: 700_000 },
+    { type: "fixo", title: "Notebook", category: "Contas", cents: 31_000, installment: { current: 3, total: 12 }, dueDay: 22 },
+    { type: "assinatura", title: "Netflix", category: "Streaming", cents: 5_590 },
+    { type: "assinatura", title: "iCloud", category: "Software", cents: 1_490 },
+    { type: "variavel", category: "Delivery", cents: 40_000 },
+    { type: "variavel", category: "Lazer", cents: 90_000 },
+  ]);
+  assert.equal(tips(ledger, sheet, now).length, 6);
+  const all = new Set<string>();
+  const scenarios: Partial<Entry>[][] = [
+    [],
+    [{ type: "variavel", category: "Mercado", cents: 5_000 }],
+    [{ type: "receita", title: "Salário", category: "Salário", cents: 1_000_000 }],
+  ];
+  for (const entries of scenarios) {
+    const built = ledgerWith(entries);
+    for (const line of tips(built.ledger, built.sheet, built.now)) all.add(line);
+  }
+  assert.ok(all.size >= 4);
+});
+
+test("sem renda e sem lançamento o termômetro diz Sem dados", () => {
+  const empty = freshLedger("Ana");
+  assert.equal(health(empty, todayISO()).level, "Sem dados");
+  const withEntry = ledgerWith([{ type: "variavel", category: "Mercado", cents: 5_000 }], undefined, todayISO());
+  assert.equal(health(withEntry.ledger, todayISO()).level, "Crítico");
+  const fine = ledgerWith(
+    [
+      { type: "receita", title: "Salário", category: "Salário", cents: 1_000_000 },
+      { type: "variavel", category: "Lazer", cents: 100_000 },
+    ],
+    undefined,
+    todayISO(),
+  );
+  assert.notEqual(health(fine.ledger, todayISO()).level, "Sem dados");
+});
+
+test("a sequência ignora mês sem renda e sem gasto", () => {
+  const base = freshLedger("Ana");
+  const sheets = ["2026-09", "2026-10", "2026-11"].map((month) => ({ ...base.sheets[0], id: month, month }));
+  const mk = (sheetId: string, type: Entry["type"], cents: number): Entry => ({ id: `${sheetId}-${type}`, sheetId, type, title: "x", category: type === "receita" ? "Salário" : "Mercado", cents, date: "2026-11-02", dueDay: null, installment: null });
+  const ledger: LedgerState = { ...base, sheets, entries: [mk("2026-09", "receita", 100_000), mk("2026-11", "receita", 100_000)] };
+  // Outubro está vazio: não conta e não quebra. Setembro e novembro fecham no azul.
+  assert.equal(streak(ledger, "2026-11-20"), 2);
+  assert.equal(streak({ ...ledger, entries: [] }, "2026-11-20"), 0);
+});
+
+test("sheetHeadline escolhe o rótulo e o número de cada tipo de planilha", () => {
+  const { ledger, sheet, now } = ledgerWith([
+    { type: "receita", title: "Salário", category: "Salário", cents: 500_000 },
+    { type: "variavel", category: "Mercado", cents: 120_000 },
+    { type: "investimento", category: "Reserva", cents: 80_000 },
+  ]);
+  assert.deepEqual(sheetHeadline(ledger, sheet, now), { label: "Livre", cents: 300_000 });
+  const goal = { ...sheet, kind: "meta" as const, targetCents: 1_200_000 };
+  const meta = sheetHeadline(ledger, goal, now);
+  assert.match(meta.label, /^Guardado de R\$\s?12\.000,00$/);
+  assert.equal(meta.cents, 80_000);
+  assert.deepEqual(sheetHeadline(ledger, { ...goal, targetCents: null }, now), { label: "Gasto", cents: 120_000 });
+  assert.deepEqual(sheetHeadline(ledger, { ...sheet, kind: "continuo" }, now), { label: "Patrimônio", cents: 80_000 });
+});
+
+test("remover ou limpar devolve da reserva o que o aporte tinha somado, sem passar de zero", () => {
+  const base = freshLedger("Ana");
+  const start: LedgerState = { ...base, goals: [{ id: "goal-reserva", name: "Reserva", targetCents: 1_000_000, savedCents: 100_000, note: "" }] };
+  const sid = start.sheets[0].id;
+  const added = addEntryTo(start, sid, { type: "investimento", title: "Aporte", category: "Reserva", cents: 50_000, date: "2026-11-02", source: "manual" });
+  assert.equal(added.goals[0].savedCents, 150_000);
+  assert.equal(added.entries[0].source, "manual");
+  const other = addEntryTo(added, sid, { type: "variavel", title: "Mercado", category: "Mercado", cents: 9_000, date: "2026-11-02" });
+  assert.equal(other.goals[0].savedCents, 150_000);
+  const id = added.entries[0].id;
+  const removed = removeEntries(other, (entry) => entry.id === id);
+  assert.equal(removed.goals[0].savedCents, 100_000);
+  assert.equal(removed.entries.length, 1);
+  const restored = restoreEntryTo(removed, added.entries[0]);
+  assert.equal(restored.goals[0].savedCents, 150_000);
+  assert.equal(restoreEntryTo(restored, added.entries[0]), restored);
+  const cleared = removeEntries(restored, (entry) => entry.sheetId === sid);
+  assert.equal(cleared.entries.length, 0);
+  assert.equal(cleared.goals[0].savedCents, 100_000);
+  const small: LedgerState = { ...added, goals: [{ ...added.goals[0], savedCents: 10_000 }] };
+  assert.equal(removeEntries(small, () => true).goals[0].savedCents, 0);
+  assert.equal(removeEntries(other, () => false), other);
+});
+
+test("duplicar o mês ajusta o dia, avança a parcela e pula a última", () => {
+  const base = freshLedger("Ana");
+  const sheet = { ...base.sheets[0], id: "jan", name: "Janeiro", month: "2027-01" };
+  const mk = (id: string, patch: Partial<Entry>): Entry => ({ id, sheetId: "jan", type: "fixo", title: id, category: "Contas", cents: 1_000, date: "2027-01-31", dueDay: 31, installment: null, source: "manual", ...patch });
+  const ledger: LedgerState = {
+    ...base,
+    sheets: [sheet],
+    entries: [
+      mk("luz", {}),
+      mk("notebook", { installment: { current: 3, total: 12 } }),
+      mk("ultima", { installment: { current: 12, total: 12 } }),
+      mk("mercado", { type: "variavel" }),
+      mk("sal", { type: "receita", category: "Salário", dueDay: null, date: "2027-01-05" }),
+    ],
+  };
+  const ids = ["new-sheet", "a", "b", "c", "d"];
+  const result = duplicateMonthIn(ledger, "jan", () => ids.shift() ?? "z");
+  assert.ok(result);
+  assert.equal(result.id, "new-sheet");
+  const copied = result.state.entries.filter((entry) => entry.sheetId === "new-sheet");
+  assert.deepEqual(copied.map((entry) => entry.title), ["luz", "notebook", "sal"]);
+  assert.equal(copied[0].date, "2027-02-28");
+  assert.equal(copied[0].dueDay, 28);
+  assert.deepEqual(copied[1].installment, { current: 4, total: 12 });
+  assert.equal(copied[2].date, "2027-02-05");
+  assert.equal(copied[0].source, "manual");
+  assert.equal(result.state.sheets.at(-1)?.name, "Fevereiro");
+  assert.equal(duplicateMonthIn(result.state, "jan"), null);
+  const leap = duplicateMonthIn({ ...ledger, sheets: [{ ...sheet, month: "2028-01" }] }, "jan", () => "q");
+  assert.equal(leap?.state.entries.find((entry) => entry.title === "luz" && entry.sheetId === "q")?.date, "2028-02-29");
+});
+
+test("updateGoal limita a inteiros não negativos e ignora id e nome vazios", () => {
+  const base = freshLedger("Ana");
+  const next = updateGoalIn(base, "goal-reserva", { targetCents: 1_234.6, savedCents: -50, name: "  Colchão  ", note: "Seis meses" });
+  assert.equal(next.goals[0].targetCents, 1_235);
+  assert.equal(next.goals[0].savedCents, 0);
+  assert.equal(next.goals[0].name, "Colchão");
+  assert.equal(next.goals[0].note, "Seis meses");
+  assert.equal(updateGoalIn(base, "goal-reserva", { name: "   ", targetCents: Number.NaN }).goals[0].name, base.goals[0].name);
+  assert.equal(updateGoalIn(base, "goal-reserva", { targetCents: Number.NaN }).goals[0].targetCents, 0);
+  assert.equal(updateGoalIn(base, "nao-existe", { targetCents: 5 }), base);
+});
+
+test("o exemplo da demonstração anda com o calendário", () => {
+  const dec = buildSeed("2026-12-10");
+  const open = dec.sheets.find((item) => item.id === NOVEMBER);
+  assert.equal(open?.month, "2026-12");
+  assert.equal(open?.name, "Dezembro");
+  assert.deepEqual(dec.sheets.filter((item) => item.kind === "mensal").map((item) => item.month), ["2026-10", "2026-11", "2026-12"]);
+  assert.ok(dec.entries.filter((item) => item.sheetId === NOVEMBER).every((item) => item.date.startsWith("2026-12-")));
+  const jan = buildSeed("2027-01-15");
+  assert.deepEqual(jan.sheets.filter((item) => item.kind === "mensal").map((item) => item.month), ["2026-11", "2026-12", "2027-01"]);
+  // Dia 30 de outubro vira 28 em fevereiro.
+  const mar = buildSeed("2027-03-10");
+  assert.ok(mar.entries.some((item) => item.date === "2027-02-28"));
+  assert.ok(mar.entries.every((item) => Number(item.date.slice(8, 10)) <= 31 && item.date.length === 10));
+  // Mesmos valores nos três meses de qualquer calendário.
+  const sum = (state: LedgerState) => state.entries.reduce((total, item) => total + item.cents, 0);
+  assert.equal(sum(dec), sum(jan));
+  assert.equal(health(dec, "2026-12-10").level !== "Sem dados", true);
+  assert.equal(mathFor(dec, dec.sheets.find((item) => item.id === NOVEMBER)!, "2026-12-10").closed, false);
 });

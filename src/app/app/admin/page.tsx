@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { fieldClass } from "@/components/ui";
+import { Button, fieldClass } from "@/components/ui";
 
 type Access = "cortesia" | "ativo" | "bloqueado";
 
@@ -92,48 +92,58 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
-        <p className="kicker">Administração</p>
-        <h1 className="display mt-3 text-4xl sm:text-5xl">Quem entra na Lâmina</h1>
-        {role !== "admin" ? (
-          <p className="mt-4 text-sm text-muted">Esta aba é só da conta administradora.</p>
-        ) : (
-          <>
-            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted">
-              Você vê quem criou conta e decide se o acesso está em cortesia, ativo ou bloqueado. Isso é a base para vender o uso depois. Os lançamentos de cada pessoa continuam cifrados com a senha dela. Esta tela não abre planilha nenhuma.
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
+      <h1 className="display text-4xl sm:text-5xl">Quem entra na Lâmina</h1>
+      {role !== "admin" ? (
+        <p className="sheet-grid mt-6 rounded-lg border border-line p-6 text-sm text-muted">Esta aba é só da conta administradora.</p>
+      ) : (
+        <>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
+            Você vê quem criou conta e decide se o acesso está em cortesia, ativo ou bloqueado. Isso é a base para vender o uso depois. Os lançamentos de cada pessoa continuam cifrados com a senha dela. Esta tela não abre planilha nenhuma.
+          </p>
+          <p className="mt-2 text-sm text-violet-2 [overflow-wrap:anywhere]">Administrador: {email}</p>
+          <dl className="mt-5 grid grid-cols-1 divide-y divide-line border-y border-line sm:grid-cols-5 sm:divide-x sm:divide-y-0">
+            <Stat label="Contas" value={String(counts.total)} />
+            <Stat label="Novas em 7 dias" value={String(counts.recent)} />
+            <Stat label="Cortesia" value={String(counts.cortesia)} />
+            <Stat label="Ativos" value={String(counts.ativo)} />
+            <Stat label="Bloqueados" value={String(counts.bloqueado)} />
+          </dl>
+          <label className="mt-6 block max-w-sm text-sm text-muted">
+            <span className="mb-1.5 block">Buscar</span>
+            <input className={fieldClass} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome ou e-mail" />
+          </label>
+          {error ? (
+            <p className="mt-4 text-sm text-coral" role="alert">
+              {error}
             </p>
-            <p className="mt-2 text-sm text-violet-2">Administrador: {email}</p>
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-              <Stat label="Contas" value={String(counts.total)} />
-              <Stat label="Novas em 7 dias" value={String(counts.recent)} />
-              <Stat label="Cortesia" value={String(counts.cortesia)} />
-              <Stat label="Ativos" value={String(counts.ativo)} />
-              <Stat label="Bloqueados" value={String(counts.bloqueado)} />
-            </div>
-            <label className="mt-6 block text-sm text-muted">
-              Buscar
-              <input className={`${fieldClass} mt-1`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome ou e-mail" />
-            </label>
-            {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
-            {accounts === null && !error ? <p className="mt-4 text-sm text-muted">Carregando contas…</p> : null}
-            {accounts && visible.length === 0 ? <p className="mt-4 text-sm text-muted">Nenhuma conta com esse filtro.</p> : null}
-            <ul className="mt-4 space-y-3">
-              {visible.map((account) => {
-                const draft = drafts[account.email] ?? { access: account.access, note: account.note };
-                return (
-                  <li key={account.email} className="rounded-2xl border border-line bg-surface p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg">{account.name}</p>
-                        <p className="text-sm text-muted">{account.email}</p>
+          ) : null}
+          {accounts === null && !error ? <p className="mt-4 text-sm text-muted">Carregando contas…</p> : null}
+          {accounts && visible.length === 0 ? <p className="sheet-grid mt-4 rounded-lg border border-line px-4 py-6 text-sm text-muted">Nenhuma conta com esse filtro.</p> : null}
+          {visible.length > 0 ? (
+            <div className="blade mt-4 rounded-lg border border-line bg-surface">
+              <div className="col-label hidden grid-cols-[minmax(0,1.2fr)_10rem_minmax(0,1fr)_6rem] gap-x-3 border-b border-line px-4 py-2 uppercase md:grid">
+                <span>Conta</span>
+                <span>Acesso</span>
+                <span>Nota interna</span>
+                <span className="sr-only">Ações</span>
+              </div>
+              <ul className="ruled">
+                {visible.map((account) => {
+                  const draft = drafts[account.email] ?? { access: account.access, note: account.note };
+                  return (
+                    <li key={account.email} className="grid gap-x-3 gap-y-2 px-4 py-3 md:grid-cols-[minmax(0,1.2fr)_10rem_minmax(0,1fr)_6rem] md:items-center">
+                      <div className="min-w-0">
+                        <p className="[overflow-wrap:anywhere]">
+                          {account.name}
+                          {account.role === "admin" ? <span className="ml-2 text-xs text-violet-2">Administrador</span> : null}
+                        </p>
+                        <p className="text-sm text-muted [overflow-wrap:anywhere]">{account.email}</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                          Cadastro em {formatWhen(account.createdAt)}, termos {account.termsVersion}
+                          {account.ledgerUpdatedAt ? `, planilha mexida em ${formatWhen(account.ledgerUpdatedAt)}` : ""}. Agora: {accessLabel[account.access]}.
+                        </p>
                       </div>
-                      <p className="text-xs text-violet-2">{account.role === "admin" ? "Administrador" : "Conta"}</p>
-                    </div>
-                    <p className="mt-2 text-xs text-faint">
-                      Cadastro {formatWhen(account.createdAt)} · termos {account.termsVersion}
-                      {account.ledgerUpdatedAt ? ` · planilha mexida ${formatWhen(account.ledgerUpdatedAt)}` : ""}
-                    </p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-[180px_1fr_auto]">
                       <select
                         className={fieldClass}
                         aria-label={`Acesso de ${account.email}`}
@@ -162,31 +172,26 @@ export default function AdminPage() {
                           }))
                         }
                       />
-                      <button
-                        type="button"
-                        className="min-h-11 rounded-full bg-violet px-4 text-sm"
-                        disabled={saving === account.email}
-                        onClick={() => void save(account.email)}
-                      >
+                      <Button type="button" disabled={saving === account.email} onClick={() => void save(account.email)}>
                         {saving === account.email ? "Salvando…" : "Salvar"}
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs text-faint">Agora: {accessLabel[account.access]}</p>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        )}
-      </div>
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface px-3 py-3">
-      <p className="kicker">{label}</p>
-      <p className="num mt-2 text-2xl">{value}</p>
+    <div className="flex min-w-0 items-baseline justify-between gap-3 py-2.5 sm:block sm:px-4 sm:py-3 sm:first:pl-0">
+      <dt className="col-label uppercase">{label}</dt>
+      <dd className="num text-lg sm:mt-1 sm:text-2xl">{value}</dd>
     </div>
   );
 }

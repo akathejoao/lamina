@@ -21,8 +21,11 @@ const plex = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+// A demonstração segue o mês atual: a página pública é refeita a cada hora para não ficar presa ao mês do deploy.
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
-  title: "Lâmina — a planilha no centro, o agente ao lado",
+  title: "Lâmina, a planilha no centro e o agente ao lado",
   description:
     "Planilha financeira com ciclo mensal, metas e um agente que lança gastos em português. No navegador ou instalada no Windows.",
   applicationName: "Lâmina",
@@ -38,6 +41,7 @@ export const viewport: Viewport = {
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

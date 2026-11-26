@@ -1,6 +1,6 @@
-import { daysLeftInMonth, monthKey, parseMoney, todayISO } from "./money";
-import { categoryBucket } from "./sheets";
-import type { Entry, EntryType, Goal, LedgerState, Sheet } from "./types";
+import { daysLeftInMonth, monthKey, parseMoney, todayISO, uid } from "./money";
+import { categoryBucket, SLICE_LABEL, splitOf } from "./sheets";
+import type { Entry, EntrySource, EntryType, Goal, LedgerState, Sheet } from "./types";
 
 const ESSENTIAL = new Set([
   "Moradia",
@@ -12,7 +12,7 @@ const ESSENTIAL = new Set([
 
 export type Bucket = "essenciais" | "estilo" | "futuro";
 
-export type HealthLevel = "Crítico" | "Equilibrado" | "Poupador" | "Investidor";
+export type HealthLevel = "Sem dados" | "Crítico" | "Equilibrado" | "Poupador" | "Investidor";
 
 export type SheetMath = {
   income: number;
@@ -103,6 +103,8 @@ export function streak(state: LedgerState, now = todayISO()): number {
   let count = 0;
   for (const sheet of months) {
     const numbers = mathFor(state, sheet, now);
+    // Mês sem renda e sem gasto não prova nada: não soma e também não quebra a sequência.
+    if (numbers.income === 0 && numbers.burn === 0 && numbers.invested === 0) continue;
     if (numbers.income - numbers.burn < 0) break;
     count += 1;
   }
@@ -117,8 +119,11 @@ export function health(state: LedgerState, now = todayISO()): {
   const sheet = currentMonthly(state, now);
   const goal = state.goals.find((item) => item.id === "goal-reserva");
   const emergency = goal && goal.targetCents > 0 ? goal.savedCents / goal.targetCents : 0;
-  if (!sheet) return { level: "Equilibrado", rate: 0, emergency };
+  if (!sheet) return { level: "Sem dados", rate: 0, emergency };
   const numbers = mathFor(state, sheet, now);
+  if (numbers.income === 0 && sheetEntries(state, sheet.id).length === 0) {
+    return { level: "Sem dados", rate: 0, emergency };
+  }
   const rate = numbers.income === 0 ? 0 : (numbers.income - numbers.burn) / numbers.income;
   const essentialShare = numbers.income === 0 ? 1 : numbers.essenciais / numbers.income;
   let level: HealthLevel = "Equilibrado";
@@ -128,37 +133,252 @@ export function health(state: LedgerState, now = todayISO()): {
   return { level, rate, emergency };
 }
 
-export function tips(state: LedgerState, sheet: Sheet, now = todayISO()): string[] {
+// O número que o cartão da planilha mostra na tela inicial, com o rótulo certo para cada tipo.
+export function sheetHeadline(state: LedgerState, sheet: Sheet, now = todayISO()): { label: string; cents: number } {
   const numbers = mathFor(state, sheet, now);
-  const lines: string[] = [];
-  const lazer = numbers.byCategory.find((item) => item.category === "Lazer");
-  const cut = lazer ? Math.round(lazer.cents * 0.15) : 0;
-  if (cut >= 1_000) {
-    lines.push(`Reduzir 15% em Lazer este mês libera ${brl(cut)} para a reserva.`);
+  if (sheet.kind === "mensal") return { label: "Livre", cents: numbers.free };
+  if (sheet.kind === "meta") {
+    const target = sheet.targetCents ?? 0;
+    if (target > 0) return { label: `Guardado de ${brl(target)}`, cents: numbers.futuro };
+    return { label: "Gasto", cents: numbers.burn };
   }
-  const delivery = numbers.byCategory.find((item) => item.category === "Delivery");
-  if (delivery && delivery.cents > 20_000) {
-    lines.push(
-      `Delivery já soma ${brl(delivery.cents)} no ciclo. Em doze meses iguais, são ${brl(delivery.cents * 12)} saindo sem você perceber.`,
+  return { label: "Patrimônio", cents: numbers.futuro };
+}
+
+type Tip = { weight: number; text: string };
+
+function pct(part: number, whole: number): number {
+  return whole <= 0 ? 0 : Math.round((part / whole) * 100);
+}
+
+function namesOf(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} e ${names[names.length - 1]}`;
+}
+
+function plural(count: number, one: string, many: string): string {
+  return count === 1 ? one : many;
+}
+
+function daysInMonthOf(iso: string): number {
+  const [year, month] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+// Dicas que só aparecem quando a condição vale e sempre citam número calculado da planilha.
+// Cada regra dá um peso; as mais importantes vêm primeiro e a lista fecha em seis.
+export function tips(state: LedgerState, sheet: Sheet, now = todayISO()): string[] {
+  const n = mathFor(state, sheet, now);
+  const entries = sheetEntries(state, sheet.id);
+  const pool: Tip[] = [];
+  const add = (weight: number, text: string) => pool.push({ weight, text });
+  const mensal = sheet.kind === "mensal";
+  const thisMonth = mensal && sheet.month === monthKey(now);
+  const day = Number(now.slice(8, 10));
+  const plan = splitOf(sheet);
+
+  const spending = entries.filter((entry) => entry.type !== "receita" && bucketOf(entry, sheet) !== "futuro");
+  const byCategory = new Map<string, number>();
+  for (const entry of spending) byCategory.set(entry.category, (byCategory.get(entry.category) ?? 0) + entry.cents);
+  const categories = [...byCategory.entries()].map(([category, cents]) => ({ category, cents })).sort((a, b) => b.cents - a.cents);
+  const catCents = (name: string) => categories.find((item) => item.category === name)?.cents ?? 0;
+
+  // 1. Planilha vazia.
+  if (entries.length === 0) {
+    add(98, "Esta planilha ainda não tem lançamentos. Escreva no chat o seu salário e o primeiro gasto, e as dicas passam a usar os seus números.");
+  }
+
+  // 2. Livre negativo.
+  if (n.free < 0) {
+    add(
+      100,
+      `O mês está ${brl(Math.abs(n.free))} no vermelho depois dos aportes. Segure variável antes de criar um gasto novo.`,
     );
   }
-  const forgotten = numbers.subscriptions.filter((item) => item.cents < 2_000);
+
+  // 3. Gasto sem renda lançada.
+  if (mensal && entries.length > 0 && n.income === 0 && n.burn + n.invested > 0) {
+    add(
+      95,
+      `Ainda não há receita lançada em ${sheet.name} e já saíram ${brl(n.burn + n.invested)}. Lance o salário para o Livre fazer sentido.`,
+    );
+  }
+
+  // 4. Contas que vencem nos próximos sete dias.
+  if (thisMonth) {
+    const due = n.dues.filter((item) => item.entry.type !== "receita");
+    if (due.length) {
+      const shown = due.slice(0, 3).map((item) => `${item.entry.title} (dia ${item.entry.dueDay}, ${brl(item.entry.cents)})`);
+      const more = due.length > 3 ? ` e mais ${due.length - 3}` : "";
+      const total = due.reduce((sum, item) => sum + item.entry.cents, 0);
+      add(
+        90,
+        `${plural(due.length, "Vence 1 conta", `Vencem ${due.length} contas`)} nos próximos 7 dias: ${namesOf(shown)}${more}. Soma ${brl(total)}.`,
+      );
+    }
+  }
+
+  // 5. Fatia acima do plano.
+  if (n.income > 0 && sheet.kind !== "continuo") {
+    let worst: { text: string; over: number } | null = null;
+    for (const bucket of ["essenciais", "estilo"] as const) {
+      const planned = Math.round((n.income * plan[bucket]) / 100);
+      const actual = n[bucket];
+      const over = actual - planned;
+      if (over > 0 && pct(actual, n.income) > plan[bucket] && (!worst || over > worst.over)) {
+        worst = {
+          over,
+          text: `${SLICE_LABEL[bucket]} já leva ${pct(actual, n.income)}% da renda de ${brl(n.income)}, e o plano da planilha é ${plan[bucket]}%. São ${brl(over)} acima do plano.`,
+        };
+      }
+    }
+    if (worst) add(80, worst.text);
+  }
+
+  // 6. Futuro abaixo do plano.
+  if (mensal && n.income > 0 && plan.futuro > 0) {
+    const planned = Math.round((n.income * plan.futuro) / 100);
+    if (n.futuro < planned) {
+      add(
+        75,
+        `Futuro está em ${brl(n.futuro)} e o plano é ${plan.futuro}% da renda, ${brl(planned)}. Faltam ${brl(planned - n.futuro)} para fechar o plano.`,
+      );
+    }
+  }
+
+  // 7. Ritmo de gasto contra os dias do mês.
+  if (thisMonth && day >= 7 && n.income > 0 && n.free >= 0 && n.burn > 0) {
+    const projected = Math.round((n.burn / day) * daysInMonthOf(now));
+    const available = n.income - n.futuro;
+    if (projected > available) {
+      add(
+        70,
+        `Se o ritmo dos ${day} primeiros dias continuar (${brl(n.burn)} gastos), o mês fecha em ${brl(projected)} de gasto, acima dos ${brl(available)} que sobram da renda depois do que foi guardado.`,
+      );
+    } else {
+      add(
+        32,
+        `No ritmo dos ${day} primeiros dias, o gasto fecha o mês em ${brl(projected)}, e ficam ${brl(available - projected)} da renda depois do que foi guardado.`,
+      );
+    }
+  }
+
+  // 8. Uma categoria concentra o gasto.
+  const top = categories[0];
+  if (top && categories.length >= 2 && n.burn > 0 && top.cents / n.burn > 0.4) {
+    add(65, `${top.category} concentra ${pct(top.cents, n.burn)}% do gasto: ${brl(top.cents)} de ${brl(n.burn)}.`);
+  }
+
+  // 9. Delivery contra mercado.
+  const delivery = catCents("Delivery");
+  if (delivery > 20_000) {
+    const market = catCents("Mercado");
+    const versus = market > 0 ? `, ${pct(delivery, market)}% do que foi no Mercado (${brl(market)})` : "";
+    add(
+      market > 0 && delivery > market / 2 ? 60 : 40,
+      `Delivery soma ${brl(delivery)} no ciclo${versus}. Em doze meses iguais, são ${brl(delivery * 12)} saindo sem você perceber.`,
+    );
+  }
+
+  // 10. Assinaturas somadas e anualizadas.
+  const subs = n.subscriptions;
+  if (subs.length >= 2) {
+    const total = subs.reduce((sum, item) => sum + item.cents, 0);
+    add(55, `${subs.length} assinaturas somam ${brl(total)} no ciclo e ${brl(total * 12)} se o ano repetir igual.`);
+  }
+
+  // 11. Assinaturas pequenas que passam despercebidas.
+  const forgotten = subs.filter((item) => item.cents < 2_000);
   if (forgotten.length) {
     const total = forgotten.reduce((sum, item) => sum + item.cents, 0);
-    lines.push(
-      `${forgotten.map((item) => item.title).join(" e ")} parecem pequenas, mas somam ${brl(total * 12)} por ano. Vale abrir o extrato e decidir se ainda usam.`,
+    add(
+      50,
+      `${namesOf(forgotten.map((item) => item.title))} ${plural(forgotten.length, "parece pequena, mas soma", "parecem pequenas, mas somam")} ${brl(total * 12)} por ano. Vale abrir o extrato e decidir se ainda ${plural(forgotten.length, "usa", "usam")}.`,
     );
   }
-  if (numbers.free < 0) {
-    lines.push(
-      `O mês está ${brl(Math.abs(numbers.free))} no vermelho depois dos aportes. Segure variável antes de criar um gasto novo.`,
-    );
-  } else if (numbers.daily > 0) {
-    lines.push(
-      `Até o fim do mês cabem ${brl(numbers.daily)} por dia sem furar o que já está lançado.`,
+
+  // 12. Cortar 15% de Lazer.
+  const cut = Math.round(catCents("Lazer") * 0.15);
+  if (cut >= 1_000) {
+    add(45, `Reduzir 15% em Lazer este mês libera ${brl(cut)} para a reserva.`);
+  }
+
+  // 13. Parcelas que ainda estão rodando.
+  const running = entries.filter((entry) => entry.installment && entry.installment.current < entry.installment.total);
+  if (running.length) {
+    const left = (entry: Entry) => entry.cents * ((entry.installment?.total ?? 0) - (entry.installment?.current ?? 0));
+    const remaining = running.reduce((sum, entry) => sum + left(entry), 0);
+    const biggest = [...running].sort((a, b) => left(b) - left(a))[0];
+    const where = `${biggest.title} (parcela ${biggest.installment?.current}/${biggest.installment?.total})`;
+    add(
+      58,
+      running.length === 1
+        ? `${where} segue rodando. Depois desta ainda faltam ${brl(remaining)} em parcelas.`
+        : `${running.length} parcelamentos seguem rodando e faltam ${brl(remaining)} depois das parcelas deste ciclo. O maior é ${where}.`,
     );
   }
-  return lines;
+
+  // 14. Progresso da reserva de emergência.
+  const reserve = state.goals.find((item) => item.id === "goal-reserva");
+  if (reserve) {
+    if (reserve.targetCents <= 0) {
+      add(30, `A meta de ${reserve.name} ainda não está definida. Defina no Perfil para acompanhar o progresso.`);
+    } else if (reserve.savedCents >= reserve.targetCents) {
+      add(25, `${reserve.name} já bateu a meta de ${brl(reserve.targetCents)}.`);
+    } else {
+      const missing = reserve.targetCents - reserve.savedCents;
+      const base = `${reserve.name} está em ${pct(reserve.savedCents, reserve.targetCents)}% (${brl(reserve.savedCents)} de ${brl(reserve.targetCents)}).`;
+      if (mensal && n.futuro > 0) {
+        const months = Math.ceil(missing / n.futuro);
+        add(52, `${base} No ritmo deste ciclo (${brl(n.futuro)} guardados), faltam ${months} ${plural(months, "mês", "meses")} para fechar.`);
+      } else if (mensal) {
+        add(52, `${base} Faltam ${brl(missing)} e nada foi guardado neste ciclo ainda.`);
+      } else {
+        add(35, `${base} Faltam ${brl(missing)}.`);
+      }
+    }
+  }
+
+  // 15. Renda concentrada numa fonte só.
+  if (mensal && n.income > 0) {
+    const sources = new Map<string, { title: string; cents: number }>();
+    for (const entry of entries.filter((item) => item.type === "receita")) {
+      const key = fold(entry.title);
+      const found = sources.get(key);
+      sources.set(key, { title: found?.title ?? entry.title, cents: (found?.cents ?? 0) + entry.cents });
+    }
+    const main = [...sources.values()].sort((a, b) => b.cents - a.cents)[0];
+    if (main && main.cents / n.income >= 0.9) {
+      add(
+        28,
+        `${pct(main.cents, n.income)}% da renda de ${brl(n.income)} vem de uma fonte só, ${main.title}. Se ela atrasar, o mês inteiro trava.`,
+      );
+    }
+  }
+
+  // 16. Um gasto variável pesa muito na renda.
+  if (mensal && n.income > 0) {
+    const big = spending.filter((entry) => entry.type === "variavel").sort((a, b) => b.cents - a.cents)[0];
+    if (big && big.cents / n.income >= 0.2) {
+      add(42, `${big.title} foi o maior gasto variável: ${brl(big.cents)}, ${pct(big.cents, n.income)}% da renda. Vale conferir se estava no plano.`);
+    }
+  }
+
+  // 17. Sobra boa que precisa de destino.
+  if (mensal && n.income > 0 && n.free > 0 && n.free / n.income >= 0.2) {
+    add(30, `Sobraram ${brl(n.free)}, ${pct(n.free, n.income)}% da renda, depois dos gastos e aportes. Decida agora para onde vão, antes que virem gasto.`);
+  }
+
+  // 18. Quanto cabe por dia.
+  if (thisMonth && n.free > 0 && n.daily > 0) {
+    add(35, `Até o fim do mês cabem ${brl(n.daily)} por dia sem furar o que já está lançado.`);
+  }
+
+  return pool
+    .map((item, index) => ({ ...item, index }))
+    .sort((a, b) => b.weight - a.weight || a.index - b.index)
+    .slice(0, 6)
+    .map((item) => item.text);
 }
 
 export function patrimony(state: LedgerState): number {
@@ -530,4 +750,148 @@ function normalizeDate(raw: string): string | null {
   const year = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+// Operações puras sobre a planilha. O modo demonstração e o modo conta usam as mesmas,
+// então o que entra e o que sai mexem nas metas do mesmo jeito nos dois.
+
+export type DraftEntry = {
+  type: EntryType;
+  title: string;
+  category: string;
+  cents: number;
+  date: string;
+  dueDay?: number | null;
+  installment?: { current: number; total: number } | null;
+  source?: EntrySource;
+};
+
+// Quais metas um lançamento de investimento alimenta.
+function goalLinks(entry: Pick<Entry, "type" | "category" | "title">): string[] {
+  if (entry.type !== "investimento") return [];
+  const ids: string[] = [];
+  if (/reserva/i.test(entry.category)) ids.push("goal-reserva");
+  if (/viagem|jap[aã]o/i.test(`${entry.category} ${entry.title}`)) ids.push("goal-jp");
+  return ids;
+}
+
+function shiftGoals(goals: Goal[], entry: Pick<Entry, "type" | "category" | "title" | "cents">, sign: 1 | -1): Goal[] {
+  const ids = goalLinks(entry);
+  if (!ids.length) return goals;
+  return goals.map((goal) =>
+    ids.includes(goal.id) ? { ...goal, savedCents: Math.max(0, goal.savedCents + sign * entry.cents) } : goal,
+  );
+}
+
+export function addEntryTo(current: LedgerState, sheetId: string, draft: DraftEntry): LedgerState {
+  const item: Entry = {
+    id: uid(),
+    sheetId,
+    type: draft.type,
+    title: draft.title,
+    category: draft.category,
+    cents: draft.cents,
+    date: draft.date,
+    dueDay: draft.dueDay ?? null,
+    installment: draft.installment ?? null,
+  };
+  if (draft.source) item.source = draft.source;
+  return { ...current, entries: [...current.entries, item], goals: shiftGoals(current.goals, item, 1) };
+}
+
+// Tira os lançamentos e devolve da meta o que eles tinham somado, sem passar de zero.
+export function removeEntries(current: LedgerState, shouldRemove: (entry: Entry) => boolean): LedgerState {
+  let goals = current.goals;
+  let changed = false;
+  const kept: Entry[] = [];
+  for (const entry of current.entries) {
+    if (shouldRemove(entry)) {
+      goals = shiftGoals(goals, entry, -1);
+      changed = true;
+    } else {
+      kept.push(entry);
+    }
+  }
+  return changed ? { ...current, entries: kept, goals } : current;
+}
+
+export function restoreEntryTo(current: LedgerState, entry: Entry): LedgerState {
+  if (current.entries.some((item) => item.id === entry.id)) return current;
+  return { ...current, entries: [...current.entries, entry], goals: shiftGoals(current.goals, entry, 1) };
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("pt-BR", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+// Copia o mês para o seguinte: fixos, assinaturas e salário. O dia cabe no mês novo (31 vira 28, 29 ou 30),
+// a parcela avança (3/12 vira 4/12) e a que já foi a última não volta.
+export function duplicateMonthIn(
+  current: LedgerState,
+  sheetId: string,
+  makeId: () => string = uid,
+): { state: LedgerState; id: string } | null {
+  const source = current.sheets.find((sheet) => sheet.id === sheetId);
+  if (!source?.month) return null;
+  const [year, month] = source.month.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month, 1));
+  const key = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+  if (current.sheets.some((sheet) => sheet.month === key)) return null;
+  const last = daysInMonthOf(`${key}-01`);
+  const newId = makeId();
+  const copies: Entry[] = [];
+  for (const entry of current.entries) {
+    if (entry.sheetId !== sheetId) continue;
+    if (!(entry.type === "fixo" || entry.type === "assinatura" || entry.category === "Salário")) continue;
+    if (entry.installment && entry.installment.current >= entry.installment.total) continue;
+    const day = Math.min(Number(entry.date.slice(8, 10)) || 1, last);
+    copies.push({
+      ...entry,
+      id: makeId(),
+      sheetId: newId,
+      date: `${key}-${String(day).padStart(2, "0")}`,
+      dueDay: entry.dueDay === null ? null : Math.min(entry.dueDay, last),
+      installment: entry.installment ? { current: entry.installment.current + 1, total: entry.installment.total } : null,
+    });
+  }
+  return {
+    id: newId,
+    state: {
+      ...current,
+      sheets: [
+        ...current.sheets,
+        { ...source, id: newId, name: monthLabel(key), kind: "mensal", month: key, deadline: null, targetCents: null, archived: false },
+      ],
+      entries: [...current.entries, ...copies],
+    },
+  };
+}
+
+const CENTS_CAP = 100_000_000_000;
+
+function wholeCents(value: number): number | null {
+  if (!Number.isFinite(value)) return null;
+  return Math.min(CENTS_CAP, Math.max(0, Math.round(value)));
+}
+
+export function updateGoalIn(
+  current: LedgerState,
+  id: string,
+  patch: { name?: string; targetCents?: number; savedCents?: number; note?: string },
+): LedgerState {
+  if (!current.goals.some((goal) => goal.id === id)) return current;
+  return {
+    ...current,
+    goals: current.goals.map((goal) => {
+      if (goal.id !== id) return goal;
+      const next = { ...goal };
+      if (typeof patch.name === "string" && patch.name.trim()) next.name = patch.name.trim().slice(0, 80);
+      if (typeof patch.note === "string") next.note = patch.note.trim().slice(0, 280);
+      if (typeof patch.targetCents === "number") next.targetCents = wholeCents(patch.targetCents) ?? goal.targetCents;
+      if (typeof patch.savedCents === "number") next.savedCents = wholeCents(patch.savedCents) ?? goal.savedCents;
+      return next;
+    }),
+  };
 }

@@ -1,10 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import Link from "next/link";
+import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { X } from "lucide-react";
 import { SliceChart } from "./slice-chart";
 import { SheetForm } from "./sheet-form";
-import { decodeCsvBytes, entriesToCsv } from "@/lib/csv";
+import { CSV_MAX_BYTES, CSV_MAX_ROWS, decodeCsvBytes, entriesToCsv } from "@/lib/csv";
 import { bucketOf, mathFor } from "@/lib/finance";
 import { formatBRL, formatDay, monthKey, parseMoney, todayISO } from "@/lib/money";
 import { easeOut } from "@/lib/motion";
@@ -33,7 +35,14 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
   }, [removed]);
 
   if (!sheet || !numbers) {
-    return <p className="p-6 text-muted">Essa planilha não está mais aqui.</p>;
+    return (
+      <div className="sheet-grid m-4 rounded-lg border border-line p-6">
+        <p className="text-muted">Essa planilha não está mais aqui.</p>
+        <Link href="/app" className="mt-3 inline-flex min-h-10 items-center text-sm text-violet-2 hover:text-ink">
+          Voltar para as planilhas
+        </Link>
+      </div>
+    );
   }
 
   const entries = state.entries
@@ -95,10 +104,18 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
       setNotice("Arquivos do Excel (.xlsx) precisam ser salvos como CSV: no Excel, Arquivo, Salvar como, CSV UTF-8.");
       return;
     }
+    if (file.size > CSV_MAX_BYTES) {
+      setNotice(`Esse arquivo tem ${(file.size / 1_000_000).toFixed(1).replace(".", ",")} MB. O limite é ${(CSV_MAX_BYTES / 1_000_000).toFixed(0)} MB por CSV. Divida em partes menores.`);
+      return;
+    }
     const { readCsv } = await import("@/lib/finance");
     const { rows, skipped } = readCsv(decodeCsvBytes(await file.arrayBuffer()));
     if (!rows.length) {
       setNotice("O CSV precisa das colunas descricao e valor.");
+      return;
+    }
+    if (rows.length + skipped > CSV_MAX_ROWS) {
+      setNotice(`Esse CSV tem ${(rows.length + skipped).toLocaleString("pt-BR")} linhas. O limite é ${CSV_MAX_ROWS.toLocaleString("pt-BR")} por importação. Divida o arquivo e importe em partes.`);
       return;
     }
     importRows(sheet.id, rows);
@@ -108,26 +125,26 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
 
   return (
     <section className="@container flex w-full min-w-0 max-w-full flex-col">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 py-4">
-        <div className="min-w-0">
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 px-4 pt-5 pb-4">
+        <div className="min-w-0 flex-1 basis-64">
           <p className="kicker">{KIND_LABEL[sheet.kind]}</p>
-          <h1 className="display mt-1 text-3xl sm:text-4xl">{sheet.name}</h1>
+          <h1 className="display mt-1.5 text-4xl [overflow-wrap:anywhere] @xl:text-5xl">{sheet.name}</h1>
           {sheet.note ? <p className="mt-2 max-w-xl text-sm text-muted">{sheet.note}</p> : null}
           {numbers.closed ? <p className="mt-2 text-sm text-amber">Ciclo fechado. O balanço deste mês já virou.</p> : null}
           {target > 0 ? (
             <div className="mt-3 max-w-xs">
-              <p className="text-sm text-muted">
+              <p className="num text-sm text-muted">
                 {formatBRL(saved)} de {formatBRL(target)}
               </p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-canvas">
-                <div className="bar-draw h-full rounded-full" style={{ "--scale": String(Math.min(1, saved / target)), background: accent } as CSSProperties} />
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div className="bar-draw h-full rounded-full" style={{ "--scale": String(Math.min(1, saved / target)), background: accent } as React.CSSProperties} />
               </div>
             </div>
           ) : null}
           {Array.isArray(sheet.categories) && sheet.categories.length > 0 ? (
             <ul className="mt-3 flex flex-wrap gap-1.5">
               {sheet.categories.map((item) => (
-                <li key={item.name} className="inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+                <li key={item.name} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-0.5 text-xs text-muted">
                   <span className="size-1.5 rounded-full" style={{ background: SLICE_COLOR[item.bucket] }} />
                   {item.name}
                 </li>
@@ -136,10 +153,10 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" onClick={() => setOpen(true)}>
+          <Button type="button" className="px-3" onClick={() => setOpen(true)}>
             Novo lançamento
           </Button>
-          <Button type="button" tone="ghost" onClick={() => fileRef.current?.click()}>
+          <Button type="button" tone="ghost" className="px-3" onClick={() => fileRef.current?.click()}>
             Importar CSV
           </Button>
           <input
@@ -177,16 +194,16 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
         </div>
       </header>
 
-      <div aria-live="polite">
-        {notice ? <p className="px-4 pt-3 text-sm text-violet-2">{notice}</p> : null}
+      <div aria-live="polite" className="empty:hidden">
+        {notice ? <p className="px-4 pb-3 text-sm text-violet-2">{notice}</p> : null}
         {removed ? (
-          <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-2 text-sm">
-            <span>
-              Removido: {removed.title}, {formatBRL(removed.cents)}.
+          <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-1.5 text-sm">
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              Removido: {removed.title}, <span className="num">{formatBRL(removed.cents)}</span>.
             </span>
             <button
               type="button"
-              className="press min-h-9 rounded-full border border-line px-3 hover:border-violet-2"
+              className="press min-h-10 rounded-md border border-line px-4 hover:border-violet-2"
               onClick={() => {
                 restoreEntry(removed);
                 setRemoved(null);
@@ -198,157 +215,175 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
         ) : null}
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3 px-4 py-4">
+      <dl className="mx-4 mb-4 grid grid-cols-1 divide-y divide-line border-y border-line @lg:grid-cols-3 @lg:divide-x @lg:divide-y-0">
         <Stat label="Entradas" value={formatBRL(numbers.income)} tone="text-mint" />
-        <Stat label="Saídas" value={formatBRL(numbers.burn)} tone="text-coral" />
+        <Stat label="Saídas" value={formatBRL(numbers.burn)} tone="text-ink" />
         <Stat label="Livre" value={formatBRL(numbers.free)} tone={numbers.free < 0 ? "text-coral" : "text-ink"} />
+      </dl>
+
+      <div className="w-full min-w-0 max-w-full px-4">
+        <div className="blade rounded-lg border border-line bg-surface">
+          <div className={compact ? "max-h-80 overflow-y-auto" : ""}>
+            <table className="w-full table-fixed text-left text-sm">
+              <caption className="sr-only">Lançamentos de {sheet.name}</caption>
+              <thead>
+                <tr className="col-label uppercase">
+                  <th scope="col" className="sticky top-0 z-10 hidden w-10 rounded-tl-lg border-r border-b border-line bg-surface-2 py-2 pr-2 text-right font-normal @2xl:table-cell">
+                    <span className="sr-only">Linha</span>
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 hidden w-20 border-b border-line bg-surface-2 px-3 py-2 font-normal @md:table-cell">
+                    Data
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 rounded-tl-lg border-b border-line bg-surface-2 px-3 py-2 font-normal @2xl:rounded-none">
+                    Descrição
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 hidden w-36 border-b border-line bg-surface-2 px-3 py-2 font-normal @xl:table-cell">
+                    Categoria
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 hidden w-28 border-b border-line bg-surface-2 px-3 py-2 font-normal @3xl:table-cell">
+                    Tipo
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 w-[7.5rem] border-b border-line bg-surface-2 px-2 py-2 text-right @md:w-[8.5rem] @md:px-3 font-normal">
+                    Valor
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 w-11 rounded-tr-lg border-b border-line bg-surface-2 py-2 font-normal">
+                    <span className="sr-only">Ações</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry, index) => (
+                  <tr key={entry.id} className="border-t border-line first:border-t-0 hover:bg-surface-2/50">
+                    <td className="num hidden border-r border-line bg-canvas-2 py-2.5 pr-2 text-right text-xs text-faint @2xl:table-cell">{index + 1}</td>
+                    <td className="num hidden px-3 py-2.5 align-top text-xs leading-5 whitespace-nowrap text-muted @md:table-cell">{formatDay(entry.date)}</td>
+                    <td className="min-w-0 px-3 py-2.5 align-top">
+                      <span className="block [overflow-wrap:anywhere]">
+                        {entry.title}
+                        {entry.installment ? (
+                          <span className="num ml-2 rounded-md bg-canvas px-1.5 py-0.5 text-xs text-amber">
+                            {entry.installment.current}/{entry.installment.total}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted @md:hidden">
+                        <span className="num">{formatDay(entry.date)}</span>, {entry.category}, <Tag type={entry.type} />
+                      </span>
+                    </td>
+                    <td className="hidden px-3 py-2.5 align-top text-muted [overflow-wrap:anywhere] @xl:table-cell">{entry.category}</td>
+                    <td className="hidden px-3 py-2.5 align-top @3xl:table-cell">
+                      <Tag type={entry.type} />
+                    </td>
+                    <td className={`num px-2 py-2.5 text-right align-top whitespace-nowrap @md:px-3 ${entry.type === "receita" ? "text-mint" : "text-ink"}`}>
+                      {entry.type === "receita" ? "+" : "−"}
+                      {formatBRL(entry.cents)}
+                    </td>
+                    <td className="p-0 text-right align-middle">
+                      <RemoveButton entry={entry} onRemove={remove} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {entries.length === 0 ? (
+              <div className="sheet-grid px-4 py-10 text-center">
+                <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted">
+                  Nada lançado. Use Novo lançamento ou escreva no agente: “Gastei R$ 32 no café”.
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <p className="col-label border-t border-line px-3 py-2 uppercase">
+            {entries.length} {entries.length === 1 ? "lançamento" : "lançamentos"}, {fixedCount} {fixedCount === 1 ? "fixo" : "fixos"}, {subscriptionCount}{" "}
+            {subscriptionCount === 1 ? "assinatura" : "assinaturas"}
+          </p>
+        </div>
       </div>
 
-      <div className="grid min-w-0 gap-4 px-4 pb-4 @2xl:grid-cols-2 @5xl:grid-cols-[1.1fr_0.9fr_1fr]">
-        <div className="@container min-w-0 rounded-2xl border border-line bg-surface p-4 @2xl:col-span-2 @5xl:col-span-1">
-          <p className="kicker">Divisão do mês</p>
-          <dl className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-x-4 gap-y-2">
+      <div className="grid min-w-0 gap-x-10 gap-y-8 px-4 pt-8 pb-8">
+        <section aria-labelledby={`divisao-${sheet.id}`} className="min-w-0">
+          <h2 id={`divisao-${sheet.id}`} className="text-xl">
+            Divisão do mês
+          </h2>
+          <dl className="mt-3 grid grid-cols-2 divide-x divide-line border-y border-line @lg:grid-cols-4">
             <Fact label="Renda do mês" value={formatBRL(numbers.income)} />
             <Fact label="Gasto" value={formatBRL(numbers.burn)} />
             <Fact label="Guardado" value={formatBRL(numbers.futuro)} />
             <Fact label="Livre" value={formatBRL(numbers.free)} tone={numbers.free < 0 ? "text-coral" : undefined} />
           </dl>
           {numbers.income <= 0 ? (
-            <p className="mt-4 rounded-xl border border-dashed border-line px-3 py-2 text-sm leading-relaxed text-muted">
+            <p className="sheet-grid mt-4 rounded-lg border border-line px-4 py-3 text-sm leading-relaxed text-muted">
               Lance primeiro a renda do mês para calcular o plano de cada fatia. Pelo agente, escreva “meu salário é R$ 5.400” ou “vale alimentação de 350 reais”.
             </p>
           ) : null}
-          <div className="mt-4 grid gap-5 @xl:grid-cols-3">
+          <div className="col-label mt-4 hidden grid-cols-[8.5rem_minmax(0,1fr)_6.5rem_6.5rem_6.5rem] gap-x-4 border-b border-line pb-2 uppercase @xl:grid">
+            <span>Fatia</span>
+            <span>{numbers.income > 0 ? "Da renda" : "Das saídas"}</span>
+            <span className="text-right">Real</span>
+            <span className="text-right">Plano</span>
+            <span className="text-right">Folga</span>
+          </div>
+          <ul className="ruled">
             {(["essenciais", "estilo", "futuro"] as const).map((key, index) => {
               const used = numbers[key];
               const percent = split[key];
               const plan = Math.round((numbers.income * percent) / 100);
               const diff = plan - used;
               const top = topBySlice(key);
+              const ratio = splitBase > 0 ? used / splitBase : 0;
               return (
-                <Split
+                <li
                   key={key}
-                  label={SLICE_LABEL[key]}
-                  actual={used}
-                  income={splitBase}
-                  target={percent / 100}
-                  color={SLICE_COLOR[key]}
-                  delay={index * 0.06}
-                  suffix={numbers.income > 0 ? " da renda" : " das saídas"}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1.5 py-3 @xl:grid-cols-[8.5rem_minmax(0,1fr)_6.5rem_6.5rem_6.5rem] @xl:items-center"
                 >
-                  <p className="mt-2 text-sm text-muted">
+                  <span className="order-1 flex min-w-0 items-center gap-2 text-sm">
+                    <span className="size-2 shrink-0 rounded-full" style={{ background: SLICE_COLOR[key] }} aria-hidden="true" />
+                    {SLICE_LABEL[key]}
+                    <span className="num text-xs text-faint">{percent}%</span>
+                  </span>
+                  <span className="num order-2 text-right text-sm @xl:order-3">{formatBRL(used)}</span>
+                  <div className="order-3 col-span-2 @xl:order-2 @xl:col-span-1">
+                    <Bar ratio={ratio} target={percent / 100} color={SLICE_COLOR[key]} delay={index * 0.05} />
+                  </div>
+                  <span className="num order-4 text-xs text-muted @xl:text-right @xl:text-sm">
                     {numbers.income > 0 ? (
                       <>
-                        Plano {percent}%: <span className="num">{formatBRL(plan)}</span>
+                        <span className="font-sans @xl:hidden">Plano </span>
+                        {formatBRL(plan)}
                       </>
                     ) : (
-                      <>Plano {percent}% da renda</>
+                      <span className="font-sans @xl:hidden">Plano {percent}% da renda</span>
                     )}
-                  </p>
+                  </span>
                   {numbers.income > 0 ? (
-                    <p className={`text-sm ${diff < 0 ? "text-coral" : "text-muted"}`}>
-                      {diff < 0 ? "Passou " : "Cabe ainda "}
-                      <span className="num">{formatBRL(Math.abs(diff))}</span>
-                    </p>
-                  ) : null}
-                  {top.length === 0 ? (
-                    <p className="mt-2 text-xs text-muted">Nada lançado nesta fatia</p>
+                    <span className={`num order-5 text-right text-xs @xl:text-sm ${diff < 0 ? "text-coral" : "text-muted"}`}>
+                      <span className="font-sans @xl:hidden">{diff < 0 ? "Passou " : "Cabe ainda "}</span>
+                      <span className="hidden @xl:inline">{diff < 0 ? "−" : ""}</span>
+                      {formatBRL(Math.abs(diff))}
+                    </span>
                   ) : (
-                    <ul className="mt-2 space-y-1">
-                      {top.map((item) => (
-                        <li key={item.category} className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted">
-                          <span className="min-w-0 break-words">{item.category}</span>
-                          <span className="num">{formatBRL(item.cents)}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <span className="order-5 hidden text-right text-sm text-faint @xl:block">—</span>
                   )}
-                </Split>
+                  <p className="order-6 col-span-2 text-xs leading-relaxed text-muted @xl:col-span-4 @xl:col-start-2">
+                    {top.length === 0
+                      ? "Nada lançado nesta fatia"
+                      : top.map((item, i) => (
+                          <span key={item.category}>
+                            {i > 0 ? " · " : ""}
+                            {item.category} <span className="num">{formatBRL(item.cents)}</span>
+                          </span>
+                        ))}
+                  </p>
+                </li>
               );
             })}
-          </div>
-          <p className="mt-4 text-xs leading-relaxed text-muted">
-            {entries.length} {entries.length === 1 ? "lançamento" : "lançamentos"}, {fixedCount} {fixedCount === 1 ? "fixo" : "fixos"}, {subscriptionCount}{" "}
-            {subscriptionCount === 1 ? "assinatura" : "assinaturas"}. A marca fina na barra é a divisão que você escolheu, {split.essenciais}/{split.estilo}/{split.futuro}.
-          </p>
-        </div>
-        <SliceChart essenciais={numbers.essenciais} estilo={numbers.estilo} futuro={numbers.futuro} />
-        <CategoryList items={numbers.byCategory.slice(0, 6)} bucketOfCategory={(name) => bucketByCategory.get(name) ?? "estilo"} />
-      </div>
+          </ul>
+          <p className="mt-2 text-xs leading-relaxed text-muted">A marca fina na barra é a divisão que você escolheu, {split.essenciais}/{split.estilo}/{split.futuro}.</p>
+        </section>
 
-      <div className={`w-full min-w-0 max-w-full px-4 pb-6 ${compact ? "max-h-80 overflow-y-auto" : ""}`}>
-        {entries.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-line p-6 text-sm text-muted">
-            Nada lançado. Use Novo lançamento ou escreva no agente: “Gastei R$ 32 no café”.
-          </p>
-        ) : (
-          <>
-            <ul className="divide-y divide-line border-y border-line md:hidden">
-              {entries.map((entry) => (
-                <li key={entry.id} className="py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="break-words">{entry.title}</p>
-                      <p className="mt-1 text-xs text-muted">
-                        {formatDay(entry.date)}, {entry.category}, <Tag type={entry.type} />
-                      </p>
-                    </div>
-                    <p className={`num shrink-0 text-sm ${entry.type === "receita" ? "text-mint" : "text-ink"}`}>
-                      {entry.type === "receita" ? "+" : "−"}
-                      {formatBRL(entry.cents)}
-                    </p>
-                  </div>
-                  <div className="mt-1 flex justify-end">
-                    <RemoveButton entry={entry} onRemove={remove} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <caption className="sr-only">Lançamentos de {sheet.name}</caption>
-                <thead className="text-muted">
-                  <tr>
-                    <th className="py-2 font-normal">Data</th>
-                    <th className="py-2 font-normal">Descrição</th>
-                    <th className="py-2 font-normal">Tipo</th>
-                    <th className="py-2 font-normal">Categoria</th>
-                    <th className="py-2 text-right font-normal">Valor</th>
-                    <th className="py-2 font-normal">
-                      <span className="sr-only">Ações</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => (
-                    <tr key={entry.id} className="border-t border-line">
-                      <td className="py-2 text-muted">{formatDay(entry.date)}</td>
-                      <td className="py-2">
-                        {entry.title}
-                        {entry.installment ? (
-                          <span className="ml-2 rounded-full bg-canvas px-2 py-0.5 text-xs text-amber">
-                            {entry.installment.current}/{entry.installment.total}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2">
-                        <Tag type={entry.type} />
-                      </td>
-                      <td className="py-2 text-muted">{entry.category}</td>
-                      <td className={`num py-2 text-right ${entry.type === "receita" ? "text-mint" : "text-ink"}`}>
-                        {entry.type === "receita" ? "+" : "−"}
-                        {formatBRL(entry.cents)}
-                      </td>
-                      <td className="py-2 text-right">
-                        <RemoveButton entry={entry} onRemove={remove} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        <div className="grid min-w-0 gap-x-10 gap-y-8 @3xl:grid-cols-2">
+          <CategoryList items={numbers.byCategory.slice(0, 6)} bucketOfCategory={(name) => bucketByCategory.get(name) ?? "estilo"} />
+          <SliceChart essenciais={numbers.essenciais} estilo={numbers.estilo} futuro={numbers.futuro} />
+        </div>
       </div>
 
       <EntryDialog
@@ -423,6 +458,7 @@ function ConfirmDialog({
 function MoreMenu({ items }: { items: { label: string; danger?: boolean; onSelect: () => void }[] }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -442,28 +478,37 @@ function MoreMenu({ items }: { items: { label: string; danger?: boolean; onSelec
 
   return (
     <div ref={box} className="relative">
-      <Button type="button" tone="ghost" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <Button type="button" tone="ghost" className="px-3" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         Mais
       </Button>
-      {open ? (
-        <ul role="menu" className="absolute right-0 z-30 mt-2 w-52 overflow-hidden rounded-xl border border-line bg-surface-2 py-1">
-          {items.map((item) => (
-            <li key={item.label} role="none">
-              <button
-                type="button"
-                role="menuitem"
-                className={`flex min-h-11 w-full items-center px-4 text-left text-sm hover:bg-surface ${item.danger ? "text-coral" : "text-ink"}`}
-                onClick={() => {
-                  setOpen(false);
-                  item.onSelect();
-                }}
-              >
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <AnimatePresence>
+        {open ? (
+          <motion.ul
+            role="menu"
+            className="absolute right-0 z-30 mt-2 w-52 overflow-hidden rounded-lg border border-line bg-surface-2 py-1"
+            style={{ transformOrigin: "top right" }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1, transition: { duration: reduce ? 0.12 : 0.16, ease: easeOut } }}
+            exit={{ opacity: 0, transition: { duration: 0.1, ease: easeOut } }}
+          >
+            {items.map((item) => (
+              <li key={item.label} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`tint flex min-h-11 w-full items-center px-4 text-left text-sm hover:bg-surface ${item.danger ? "text-coral" : "text-ink"}`}
+                  onClick={() => {
+                    setOpen(false);
+                    item.onSelect();
+                  }}
+                >
+                  {item.label}
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
@@ -472,11 +517,12 @@ function RemoveButton({ entry, onRemove }: { entry: Entry; onRemove: (entry: Ent
   return (
     <button
       type="button"
-      className="min-h-9 rounded-full px-3 text-xs text-muted hover:bg-surface hover:text-coral"
+      className="tint inline-flex size-10 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-coral"
       aria-label={`Remover ${entry.title}, ${formatBRL(entry.cents)}`}
+      title="Remover"
       onClick={() => onRemove(entry)}
     >
-      Remover
+      <X className="size-4" aria-hidden="true" />
     </button>
   );
 }
@@ -484,38 +530,61 @@ function RemoveButton({ entry, onRemove }: { entry: Entry; onRemove: (entry: Ent
 function CategoryList({ items, bucketOfCategory }: { items: { category: string; cents: number }[]; bucketOfCategory: (name: string) => SliceKey }) {
   const max = Math.max(...items.map((item) => item.cents), 1);
   return (
-    <div className="min-w-0 rounded-2xl border border-line bg-surface p-4">
-      <p className="kicker">Por categoria</p>
-      {items.length === 0 ? <p className="mt-4 text-sm text-muted">Sem gastos lançados.</p> : null}
-      <ul className="mt-4 space-y-3">
-        {items.map((item) => (
-          <li key={item.category}>
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-              <span className="min-w-0 break-words">{item.category}</span>
-              <span className="num text-muted">{formatBRL(item.cents)}</span>
-            </div>
-            <div className="mt-1 h-1.5 rounded-full bg-canvas">
-              <div
-                className="bar-draw h-full rounded-full"
-                style={{ "--scale": String(item.cents / max), background: SLICE_COLOR[bucketOfCategory(item.category)] } as CSSProperties}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <section className="min-w-0" aria-labelledby="por-categoria">
+      <h2 id="por-categoria" className="text-xl">
+        Por categoria
+      </h2>
+      {items.length === 0 ? (
+        <p className="sheet-grid mt-3 rounded-lg border border-line px-4 py-3 text-sm text-muted">Sem gastos lançados.</p>
+      ) : (
+        <ul className="ruled mt-3 border-y border-line">
+          {items.map((item) => (
+            <li key={item.category} className="py-2.5">
+              <div className="flex items-baseline justify-between gap-x-3 text-sm">
+                <span className="min-w-0 [overflow-wrap:anywhere]">{item.category}</span>
+                <span className="num shrink-0 text-muted">{formatBRL(item.cents)}</span>
+              </div>
+              <div className="mt-1.5 h-1 rounded-full bg-canvas">
+                <div
+                  className="bar-draw h-full rounded-full"
+                  style={{ "--scale": String(item.cents / max), background: SLICE_COLOR[bucketOfCategory(item.category)] } as React.CSSProperties}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
+// Faixa de totais: rótulo de coluna em cima, número em mono. Vira linhas pautadas quando o espaço aperta.
 function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-line bg-surface px-4 py-3">
-      <p className="kicker">{label}</p>
-      <p className={`num mt-1 text-2xl break-all ${tone}`}>{value}</p>
+    <div className="flex min-w-0 items-baseline justify-between gap-3 py-2.5 @lg:block @lg:px-5 @lg:py-3 @lg:first:pl-0">
+      <dt className="col-label uppercase">{label}</dt>
+      <dd className={`num text-lg [overflow-wrap:anywhere] @lg:mt-1 @lg:text-xl @2xl:text-2xl @4xl:text-3xl ${tone}`}>{value}</dd>
     </div>
   );
 }
 
+function Bar({ ratio, target, color, delay }: { ratio: number; target: number; color: string; delay: number }) {
+  const reduce = useReducedMotion();
+  return (
+    <div className="relative h-1.5 rounded-full bg-canvas">
+      <motion.div
+        className="h-1.5 rounded-full"
+        style={{ background: color, transformOrigin: "left center" }}
+        initial={reduce ? false : { scaleX: 0 }}
+        animate={{ scaleX: Math.min(1, ratio) }}
+        transition={{ duration: reduce ? 0 : 0.5, delay: reduce ? 0 : delay, ease: easeOut }}
+      />
+      <span className="pointer-events-none absolute top-[-3px] h-3 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} aria-hidden="true" />
+    </div>
+  );
+}
+
+// Usada também na landing, fora da planilha: uma fatia com barra fina e a marca do plano.
 export function Split({
   label,
   actual,
@@ -535,12 +604,10 @@ export function Split({
   suffix?: string;
   children?: ReactNode;
 }) {
-  const reduce = useReducedMotion();
   const ratio = income > 0 ? actual / income : 0;
-  const scale = Math.min(1, ratio);
   return (
-    <div className="min-w-0">
-      <div className="mb-1 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 text-sm">
+    <div className="@container min-w-0">
+      <div className="mb-1.5 flex min-w-0 flex-col gap-0.5 text-sm @[26rem]:flex-row @[26rem]:items-baseline @[26rem]:justify-between @[26rem]:gap-x-3">
         <span className="flex items-center gap-2">
           <span className="size-2 shrink-0 rounded-full" style={{ background: color }} aria-hidden="true" />
           {label}
@@ -549,16 +616,7 @@ export function Split({
           {formatBRL(actual)}, {Math.round(ratio * 100)}%{suffix}
         </span>
       </div>
-      <div className="relative h-2 rounded-full bg-canvas">
-        <motion.div
-          className="h-2 rounded-full"
-          style={{ background: color, transformOrigin: "left center" }}
-          initial={reduce ? false : { scaleX: 0 }}
-          animate={{ scaleX: scale }}
-          transition={{ duration: reduce ? 0 : 0.5, delay: reduce ? 0 : delay, ease: easeOut }}
-        />
-        <span className="pointer-events-none absolute top-[-3px] h-3.5 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} aria-hidden="true" />
-      </div>
+      <Bar ratio={ratio} target={target} color={color} delay={delay} />
       {children}
     </div>
   );
@@ -566,9 +624,9 @@ export function Split({
 
 function Fact({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="min-w-0">
-      <dt className="kicker">{label}</dt>
-      <dd className={`num mt-0.5 text-sm ${tone ?? "text-ink"}`}>{value}</dd>
+    <div className="min-w-0 px-3 py-2 first:pl-0 @lg:px-4">
+      <dt className="col-label uppercase">{label}</dt>
+      <dd className={`num mt-0.5 text-sm [overflow-wrap:anywhere] ${tone ?? "text-ink"}`}>{value}</dd>
     </div>
   );
 }
@@ -644,9 +702,12 @@ function EntryDialog({
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Valor">
-            <input className={fieldClass} inputMode="decimal" placeholder="85,00" value={amount} onChange={(event) => setAmount(event.target.value)} />
+            <input className={`${fieldClass} num`} inputMode="decimal" placeholder="85,00" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </Field>
-          <Field label="Categoria">
+          <div>
+            <label htmlFor="entry-category" className="mb-1.5 block text-sm text-muted">
+              Categoria
+            </label>
             {categories.length > 0 ? (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {categories.map((item) => (
@@ -654,7 +715,7 @@ function EntryDialog({
                     key={item}
                     type="button"
                     aria-pressed={category === item}
-                    className={`rounded-full border px-2 py-1 text-xs ${category === item ? "border-violet text-ink" : "border-line text-muted"}`}
+                    className={`tint inline-flex min-h-10 items-center rounded-md border px-3 text-xs ${category === item ? "border-violet-2 text-ink" : "border-line text-muted hover:text-ink"}`}
                     onClick={() => setCategory(item)}
                   >
                     {item}
@@ -662,8 +723,8 @@ function EntryDialog({
                 ))}
               </div>
             ) : null}
-            <input className={fieldClass} value={category} onChange={(event) => setCategory(event.target.value)} />
-          </Field>
+            <input id="entry-category" className={fieldClass} value={category} onChange={(event) => setCategory(event.target.value)} />
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Data">

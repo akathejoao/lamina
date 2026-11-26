@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { adminSetupAccepted, isDesignatedAdmin } from "@/lib/admin";
+import { adminSetupAccepted, isDesignatedAdmin, mayRevealAdminCode } from "@/lib/admin";
 import { PRIVACY_VERSION, TERMS_VERSION, encryptJson, hashPassword, newDek, wrapDek } from "@/lib/crypto";
 import { sqlAll } from "@/lib/db";
 import { freshLedger } from "@/lib/fresh";
-import { asRecord, cleanEmail, cleanName, cleanPassword, jsonBody, jsonError, limited, readJson } from "@/lib/guard";
+import { asRecord, cleanEmail, cleanName, cleanPassword, clientIp, jsonBody, jsonError, limited, readJson } from "@/lib/guard";
 import { createSession, sameOrigin } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return jsonError(403, "Origem não aceita.");
-  if (limited("register:*", 40, 60 * 60 * 1000)) {
+  const ip = clientIp(request);
+  if (ip && (await limited(`register-ip:${ip}`, 20, 60 * 60 * 1000))) {
     return jsonError(429, "Muitas tentativas. Espere um pouco e tente de novo.");
   }
   const body = asRecord(await readJson(request));
@@ -26,11 +27,14 @@ export async function POST(request: Request) {
   if (!adult || !consent) {
     return jsonError(400, "Para criar a conta, confirme a idade e o consentimento.");
   }
-  if (limited(`register:${email}`, 5, 60 * 60 * 1000)) {
+  if (await limited(`register:${email}`, 5, 60 * 60 * 1000)) {
     return jsonError(429, "Muitas tentativas. Espere um pouco e tente de novo.");
   }
   if (isDesignatedAdmin(email) && !adminSetupAccepted(body?.adminCode)) {
-    return jsonError(403, "Este e-mail é reservado à administração. Informe o código de configuração.", { adminCode: true });
+    if (mayRevealAdminCode(body)) {
+      return jsonError(403, "Este e-mail é reservado à administração. Informe o código de configuração.", { adminCode: true });
+    }
+    return jsonError(403, "Não foi possível criar a conta.");
   }
   const dek = newDek();
   const wrapped = await wrapDek(password, dek);

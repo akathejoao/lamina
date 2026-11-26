@@ -115,7 +115,7 @@ export function SheetForm({
                 type="button"
                 aria-pressed={templateId === template.id}
                 onClick={() => applyTemplate(template.id)}
-                className={`tint rounded-2xl border px-3 py-3 text-left ${templateId === template.id ? "border-violet bg-canvas" : "border-line hover:border-violet-2"}`}
+                className={`tint rounded-lg border px-3 py-3 text-left ${templateId === template.id ? "border-violet-2 bg-canvas" : "border-line hover:border-violet-2"}`}
               >
                 <span className="block text-sm text-ink">{template.name}</span>
                 <span className="mt-1 block text-xs leading-relaxed text-muted">{template.blurb}</span>
@@ -173,7 +173,7 @@ export function SheetForm({
               aria-label={ACCENT_LABEL[item]}
               aria-pressed={accent === item}
               onClick={() => setAccent(item)}
-              className={`size-9 rounded-full ${accent === item ? "ring-2 ring-ink ring-offset-2 ring-offset-surface" : ""}`}
+              className={`size-10 rounded-full ${accent === item ? "ring-2 ring-ink ring-offset-2 ring-offset-surface" : ""}`}
               style={{ background: ACCENT_COLOR[item] }}
             />
           ))}
@@ -181,13 +181,13 @@ export function SheetForm({
       </fieldset>
       <fieldset>
         <legend className="text-sm text-muted">Categorias</legend>
-        <p className="mt-1 text-xs leading-relaxed text-faint">Toque numa categoria para mudar a fatia. A cor mostra se ela conta como essencial, estilo ou futuro.</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted">Toque numa categoria para mudar a fatia. A cor mostra se ela conta como essencial, estilo ou futuro.</p>
         <ul className="mt-3 flex flex-wrap gap-2">
           {categories.map((item) => (
-            <li key={item.name} className="flex items-center gap-1 rounded-full border border-line bg-canvas py-1 pr-1 pl-2">
+            <li key={item.name} className="flex items-center rounded-md border border-line bg-canvas pl-3">
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 text-xs"
+                className="inline-flex min-h-10 items-center gap-1.5 text-xs"
                 aria-label={`${item.name}, fatia ${SLICE_LABEL[item.bucket]}. Trocar a fatia.`}
                 onClick={() =>
                   setCategories((current) =>
@@ -200,7 +200,7 @@ export function SheetForm({
               </button>
               <button
                 type="button"
-                className="px-1 text-xs text-faint"
+                className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-md text-sm text-muted hover:text-coral"
                 aria-label={`Tirar ${item.name}`}
                 onClick={() => setCategories((current) => current.filter((category) => category.name !== item.name))}
               >
@@ -252,8 +252,12 @@ export function SheetForm({
         </div>
         <p className={`mt-2 text-xs ${sum === 100 ? "text-mint" : "text-coral"}`}>Soma {sum}. As três partes fecham em 100.</p>
       </fieldset>
-      {error ? <p className="text-sm text-coral">{error}</p> : null}
-      <div className="sticky bottom-0 -mx-5 flex justify-end border-t border-line bg-surface px-5 py-3">
+      {error ? (
+        <p className="text-sm text-coral" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end border-t border-line bg-surface px-5 py-3">
         <Button type="submit">{mode === "create" ? "Criar planilha" : "Salvar"}</Button>
       </div>
     </form>

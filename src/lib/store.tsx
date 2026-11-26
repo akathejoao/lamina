@@ -3,25 +3,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { interpret } from "./agent";
+import { addEntryTo, duplicateMonthIn, removeEntries, restoreEntryTo, updateGoalIn, type DraftEntry } from "./finance";
 import { applyProfilePatch, freshLedger, scrubLedger } from "./fresh";
 import { NOVEMBER, seedState } from "./seed";
 import { sheetFromDraft, type SheetDraft } from "./sheets";
-import { uid } from "./money";
-import type { Entry, EntryType, LedgerState, Profile } from "./types";
+import { monthKey, todayISO, uid } from "./money";
+import type { Entry, LedgerState, Profile } from "./types";
 
-const KEY = "lamina-ledger-v1";
+// v2: a demonstração agora anda com o calendário. Uma demo guardada de outro mês volta ao exemplo novo.
+const KEY = "lamina-ledger-v2";
 
-type DraftEntry = {
-  type: EntryType;
-  title: string;
-  category: string;
-  cents: number;
-  date: string;
-  dueDay?: number | null;
-  installment?: { current: number; total: number } | null;
-};
-
-export type SaveState = "ok" | "saving" | "error" | "conflict" | "expired";
+export type SaveState = "ok" | "saving" | "error" | "conflict" | "expired" | "toolarge" | "invalid";
 
 type Store = {
   state: LedgerState;
@@ -42,6 +34,7 @@ type Store = {
   archiveSheet: (id: string) => void;
   duplicateMonth: (id: string) => string | null;
   clearSheet: (id: string) => void;
+  updateGoal: (id: string, patch: { name?: string; targetCents?: number; savedCents?: number; note?: string }) => void;
   importRows: (sheetId: string, rows: DraftEntry[]) => void;
   send: (sheetId: string, text: string) => void;
   updateProfile: (patch: Partial<Profile>) => void;
@@ -58,7 +51,10 @@ function readStorage(): LedgerState {
     const raw = localStorage.getItem(KEY);
     if (!raw) return seedState;
     const parsed = JSON.parse(raw) as LedgerState;
-    if (parsed.sheets && parsed.entries && parsed.profile) return parsed;
+    const current = monthKey(todayISO());
+    const upToDate =
+      Array.isArray(parsed.sheets) && parsed.sheets.some((sheet) => sheet.kind === "mensal" && sheet.month === current);
+    if (upToDate && parsed.entries && parsed.profile) return parsed;
   } catch {
     /* keep the example ledger */
   }
@@ -107,30 +103,23 @@ function subscribe(listener: () => void) {
   };
 }
 
-function pushEntry(current: LedgerState, sheetId: string, draft: DraftEntry): LedgerState {
-  const item: Entry = {
-    id: uid(),
-    sheetId,
-    type: draft.type,
-    title: draft.title,
-    category: draft.category,
-    cents: draft.cents,
-    date: draft.date,
-    dueDay: draft.dueDay ?? null,
-    installment: draft.installment ?? null,
+// Uma frase do chat vira, de uma vez, a mensagem, o desfazer e os lançamentos.
+function runSend(current: LedgerState, sheetId: string, text: string): LedgerState {
+  const sheet = current.sheets.find((item) => item.id === sheetId);
+  if (!sheet) return current;
+  const outcome = interpret(text, current, sheet);
+  let next: LedgerState = {
+    ...current,
+    messages: [
+      ...current.messages,
+      { id: uid(), sheetId, role: "user", text, at: new Date().toISOString() },
+      { id: uid(), sheetId, role: "agent", text: outcome.reply, at: new Date().toISOString() },
+    ],
   };
-  let goals = current.goals;
-  if (draft.type === "investimento" && /reserva/i.test(draft.category)) {
-    goals = goals.map((goal) =>
-      goal.id === "goal-reserva" ? { ...goal, savedCents: goal.savedCents + draft.cents } : goal,
-    );
-  }
-  if (draft.type === "investimento" && /viagem|jap[aã]o/i.test(`${draft.category} ${draft.title}`)) {
-    goals = goals.map((goal) =>
-      goal.id === "goal-jp" ? { ...goal, savedCents: goal.savedCents + draft.cents } : goal,
-    );
-  }
-  return { ...current, entries: [...current.entries, item], goals };
+  if (outcome.undoEntryId) next = removeEntries(next, (entry) => entry.id === outcome.undoEntryId);
+  if (outcome.entry) next = addEntryTo(next, sheetId, { ...outcome.entry, source: "agente" });
+  if (outcome.csv) next = outcome.csv.reduce((acc, row) => addEntryTo(acc, sheetId, { ...row, source: "csv" }), next);
+  return next;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -151,13 +140,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveState: "ok",
       retrySave: () => undefined,
       logout: null,
-      addEntry: (sheetId, draft) => update((current) => pushEntry(current, sheetId, draft)),
-      removeEntry: (id) =>
-        update((current) => ({
-          ...current,
-          entries: current.entries.filter((entry) => entry.id !== id),
-        })),
-      restoreEntry: (entry) => update((current) => ({ ...current, entries: [...current.entries, entry] })),
+      addEntry: (sheetId, draft) => update((current) => addEntryTo(current, sheetId, { source: "manual", ...draft })),
+      removeEntry: (id) => update((current) => removeEntries(current, (entry) => entry.id === id)),
+      restoreEntry: (entry) => update((current) => restoreEntryTo(current, entry)),
       createSheet: (draft) => {
         const id = uid();
         update((current) => ({ ...current, sheets: [...current.sheets, sheetFromDraft(id, draft)] }));
@@ -174,70 +159,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sheets: current.sheets.map((sheet) => (sheet.id === id ? { ...sheet, archived: true } : sheet)),
         })),
       duplicateMonth: (id) => {
-        const current = getSnapshot();
-        const source = current.sheets.find((sheet) => sheet.id === id);
-        if (!source?.month) return null;
-        const [year, month] = source.month.split("-").map(Number);
-        const next = new Date(Date.UTC(year, month, 1));
-        const key = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
-        if (current.sheets.some((sheet) => sheet.month === key)) return null;
-        const newId = uid();
-        const copy = current.entries.filter(
-          (entry) =>
-            entry.sheetId === id &&
-            (entry.type === "fixo" || entry.type === "assinatura" || entry.category === "Salário"),
-        );
-        update((latest) => ({
-          ...latest,
-          sheets: [
-            ...latest.sheets,
-            {
-              ...source,
-              id: newId,
-              name: monthName(key),
-              kind: "mensal",
-              month: key,
-              deadline: null,
-              targetCents: null,
-              archived: false,
-            },
-          ],
-          entries: [
-            ...latest.entries,
-            ...copy.map((entry) => ({
-              ...entry,
-              id: uid(),
-              sheetId: newId,
-              date: `${key}-${entry.date.slice(8, 10)}`,
-            })),
-          ],
-        }));
-        return newId;
+        const result = duplicateMonthIn(getSnapshot(), id);
+        if (!result) return null;
+        emit(result.state);
+        return result.id;
       },
-      clearSheet: (id) =>
-        update((current) => ({
-          ...current,
-          entries: current.entries.filter((entry) => entry.sheetId !== id),
-        })),
+      clearSheet: (id) => update((current) => removeEntries(current, (entry) => entry.sheetId === id)),
+      updateGoal: (id, patch) => update((current) => updateGoalIn(current, id, patch)),
       importRows: (sheetId, rows) =>
-        update((current) => rows.reduce((next, row) => pushEntry(next, sheetId, row), current)),
-      send: (sheetId, text) =>
-        update((current) => {
-          const sheet = current.sheets.find((item) => item.id === sheetId);
-          if (!sheet) return current;
-          const outcome = interpret(text, current, sheet);
-          let next: LedgerState = {
-            ...current,
-            messages: [
-              ...current.messages,
-              { id: uid(), sheetId, role: "user", text, at: new Date().toISOString() },
-              { id: uid(), sheetId, role: "agent", text: outcome.reply, at: new Date().toISOString() },
-            ],
-          };
-          if (outcome.entry) next = pushEntry(next, sheetId, outcome.entry);
-          if (outcome.csv) next = outcome.csv.reduce((acc, row) => pushEntry(acc, sheetId, row), next);
-          return next;
-        }),
+        update((current) => rows.reduce((next, row) => addEntryTo(next, sheetId, { source: "csv", ...row }), current)),
+      send: (sheetId, text) => update((current) => runSend(current, sheetId, text)),
       updateProfile: (patch) => update((current) => applyProfilePatch(current, patch)),
       reset: () => emit(seedState),
     }),
@@ -279,6 +210,8 @@ const SAVE_NOTE: Record<SaveState, string> = {
   error: "Não salvou. Sem conexão ou servidor fora do ar.",
   conflict: "A planilha mudou em outro aparelho. Recarregue para ver a versão mais nova.",
   expired: "A sessão terminou. Entre de novo para salvar.",
+  toolarge: "A planilha ficou grande demais para salvar. Apague lançamentos ou mensagens antigos.",
+  invalid: "Algum dado ficou inválido. Recarregue a página; o que deu errado não foi salvo.",
 };
 
 // Um salvamento por vez, sempre com a versão que o servidor devolveu por último.
@@ -307,6 +240,12 @@ async function runSave(report: (state: SaveState) => void, onBlocked: () => void
     } else if (response.status === 409) {
       dirty = false;
       onState("conflict");
+    } else if (response.status === 413) {
+      dirty = false;
+      onState("toolarge");
+    } else if (response.status === 400) {
+      dirty = false;
+      onState("invalid");
     } else if (response.status === 401) {
       dirty = false;
       onState("expired");
@@ -459,9 +398,9 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
       saveState,
       retrySave,
       logout,
-      addEntry: (sheetId, draft) => write((current) => pushEntry(current, sheetId, draft)),
-      removeEntry: (id) => write((current) => ({ ...current, entries: current.entries.filter((entry) => entry.id !== id) })),
-      restoreEntry: (entry) => write((current) => ({ ...current, entries: [...current.entries, entry] })),
+      addEntry: (sheetId, draft) => write((current) => addEntryTo(current, sheetId, { source: "manual", ...draft })),
+      removeEntry: (id) => write((current) => removeEntries(current, (entry) => entry.id === id)),
+      restoreEntry: (entry) => write((current) => restoreEntryTo(current, entry)),
       createSheet: (draft) => {
         const id = uid();
         write((current) => ({ ...current, sheets: [...current.sheets, sheetFromDraft(id, draft)] }));
@@ -478,64 +417,27 @@ export function AccountStoreProvider({ children }: { children: ReactNode }) {
           sheets: current.sheets.map((sheet) => (sheet.id === id ? { ...sheet, archived: true } : sheet)),
         })),
       duplicateMonth: (id) => {
-        const source = ledger.sheets.find((sheet) => sheet.id === id);
-        if (!source?.month) return null;
-        const [year, month] = source.month.split("-").map(Number);
-        const next = new Date(Date.UTC(year, month, 1));
-        const key = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
-        if (ledger.sheets.some((sheet) => sheet.month === key)) return null;
-        const newId = uid();
-        const copy = ledger.entries.filter(
-          (entry) =>
-            entry.sheetId === id &&
-            (entry.type === "fixo" || entry.type === "assinatura" || entry.category === "Salário"),
-        );
-        write((latest) => ({
-          ...latest,
-          sheets: [
-            ...latest.sheets,
-            {
-              ...source,
-              id: newId,
-              name: monthName(key),
-              kind: "mensal",
-              month: key,
-              deadline: null,
-              targetCents: null,
-              archived: false,
-            },
-          ],
-          entries: [
-            ...latest.entries,
-            ...copy.map((entry) => ({
-              ...entry,
-              id: uid(),
-              sheetId: newId,
-              date: `${key}-${entry.date.slice(8, 10)}`,
-            })),
-          ],
-        }));
+        const preview = duplicateMonthIn(ledger, id);
+        if (!preview) return null;
+        const newId = preview.id;
+        write((latest) => {
+          let first = true;
+          const result = duplicateMonthIn(latest, id, () => {
+            if (first) {
+              first = false;
+              return newId;
+            }
+            return uid();
+          });
+          return result ? result.state : latest;
+        });
         return newId;
       },
-      clearSheet: (id) => write((current) => ({ ...current, entries: current.entries.filter((entry) => entry.sheetId !== id) })),
-      importRows: (sheetId, rows) => write((current) => rows.reduce((next, row) => pushEntry(next, sheetId, row), current)),
-      send: (sheetId, text) =>
-        write((current) => {
-          const sheet = current.sheets.find((item) => item.id === sheetId);
-          if (!sheet) return current;
-          const outcome = interpret(text, current, sheet);
-          let next: LedgerState = {
-            ...current,
-            messages: [
-              ...current.messages,
-              { id: uid(), sheetId, role: "user", text, at: new Date().toISOString() },
-              { id: uid(), sheetId, role: "agent", text: outcome.reply, at: new Date().toISOString() },
-            ],
-          };
-          if (outcome.entry) next = pushEntry(next, sheetId, outcome.entry);
-          if (outcome.csv) next = outcome.csv.reduce((acc, row) => pushEntry(acc, sheetId, row), next);
-          return next;
-        }),
+      clearSheet: (id) => write((current) => removeEntries(current, (entry) => entry.sheetId === id)),
+      updateGoal: (id, patch) => write((current) => updateGoalIn(current, id, patch)),
+      importRows: (sheetId, rows) =>
+        write((current) => rows.reduce((next, row) => addEntryTo(next, sheetId, { source: "csv", ...row }), current)),
+      send: (sheetId, text) => write((current) => runSend(current, sheetId, text)),
       updateProfile: (patch) => write((current) => applyProfilePatch(current, patch)),
       reset: () => write((current) => freshLedger(current.profile.name)),
     };
@@ -582,25 +484,50 @@ function BlockedAccess({ logout }: { logout: () => Promise<void> }) {
     }
   };
 
+  const download = async () => {
+    setPending(true);
+    setNote(null);
+    try {
+      const response = await fetch("/api/account/export", { cache: "no-store" });
+      if (!response.ok) {
+        setNote("Não baixou os dados. Tente de novo.");
+        return;
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "lamina-meus-dados.json";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setNote("Sem conexão. Tente de novo.");
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
+    <main className="mx-auto flex h-dvh max-w-md flex-col justify-center overflow-y-auto px-6">
       <h1 className="display text-4xl">Esta conta não entra na planilha agora.</h1>
       <p className="mt-4 text-sm leading-relaxed text-muted">
         O administrador marcou o acesso como bloqueado. Quando ele voltar para cortesia ou ativo, os lançamentos continuam aqui, cifrados.
       </p>
+      <button type="button" disabled={pending} onClick={() => void download()} className="press mt-6 min-h-11 self-start rounded-md border border-line px-4 text-sm text-ink disabled:opacity-40">
+        Baixar meus dados
+      </button>
       <form onSubmit={erase} className="mt-8 grid gap-2 border-t border-line pt-6">
         <label className="text-sm text-muted" htmlFor="blocked-erase">
           Se preferir, apague a conta e a planilha. Confirme com a senha.
         </label>
         <input
           id="blocked-erase"
-          className="min-h-11 w-full rounded-xl border border-line bg-canvas px-3 text-ink outline-none focus-visible:border-violet"
+          className="min-h-11 w-full rounded-md border border-field bg-canvas px-3 text-ink focus-visible:border-violet-2"
           type="password"
           autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
-        <button type="submit" disabled={pending} className="press min-h-11 rounded-full border border-coral/50 px-4 text-sm text-coral disabled:opacity-40">
+        <button type="submit" disabled={pending} className="press min-h-11 rounded-md border border-coral/50 px-4 text-sm text-coral disabled:opacity-40">
           Apagar a conta
         </button>
         {note ? (
@@ -614,13 +541,4 @@ function BlockedAccess({ logout }: { logout: () => Promise<void> }) {
       </button>
     </main>
   );
-}
-
-function monthName(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  const label = new Intl.DateTimeFormat("pt-BR", {
-    month: "long",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, month - 1, 1)));
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 const easeOut = [0.23, 1, 0.32, 1] as const;
 
@@ -20,14 +20,28 @@ export function Modal({
 }) {
   const reduce = useReducedMotion();
   const transition = { duration: reduce ? 0 : 0.2, ease: easeOut };
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
+    const before = document.activeElement as HTMLElement | null;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") close.current();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    // O foco entra no diálogo, a menos que um campo dentro dele já o tenha pedido, e volta ao fechar.
+    const timer = setTimeout(() => {
+      if (panel.current && !panel.current.contains(document.activeElement)) panel.current.focus();
+    }, 30);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("keydown", onKey);
+      before?.focus?.();
+    };
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -42,20 +56,22 @@ export function Modal({
         >
           <button type="button" className="absolute inset-0 bg-black/70" aria-label="Fechar" onClick={onClose} />
           <motion.div
+            ref={panel}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
-            className={`relative z-10 max-h-[min(92dvh,860px)] w-full overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl ${wide ? "max-w-xl" : "max-w-lg"}`}
-            initial={reduce ? false : { y: 12 }}
-            animate={{ y: 0 }}
-            exit={reduce ? { y: 0 } : { y: 8 }}
+            className={`relative z-10 max-h-[min(92dvh,860px)] w-full overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface p-5 outline-none ${wide ? "max-w-xl" : "max-w-lg"}`}
+            initial={reduce ? false : { y: 12, scale: 0.98 }}
+            animate={{ y: 0, scale: 1 }}
+            exit={reduce ? { y: 0 } : { y: 6, scale: 0.99, transition: { duration: 0.15, ease: easeOut } }}
             transition={transition}
           >
             <div className="mb-4 flex items-start justify-between gap-4">
               <h2 id="modal-title" className="display text-2xl">
                 {title}
               </h2>
-              <button type="button" onClick={onClose} className="rounded-full px-2 py-1 text-sm text-muted">
+              <button type="button" onClick={onClose} className="tint inline-flex min-h-10 shrink-0 items-center rounded-md px-3 text-sm text-muted hover:text-ink">
                 Fechar
               </button>
             </div>
@@ -81,7 +97,7 @@ export function Button({
   return (
     <button
       {...props}
-      className={`press inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]} ${className}`}
+      className={`press inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]} ${className}`}
     />
   );
 }
@@ -101,5 +117,11 @@ export function Field({
   );
 }
 
+// Campo: borda mais firme que a linha comum para passar 3:1 contra o fundo, e o anel de foco global fica ligado.
 export const fieldClass =
-  "min-h-11 w-full rounded-xl border border-line bg-canvas px-3 text-ink outline-none focus-visible:border-violet";
+  "min-h-11 w-full rounded-md border border-field bg-canvas px-3 text-ink focus-visible:border-violet-2 focus-visible:outline-offset-0";
+
+export const cardClass = "rounded-lg border border-line bg-surface p-4";
+
+// Link de texto com alvo de toque de 40px, para listas e rodapés.
+export const textLink = "inline-flex min-h-10 items-center text-sm text-violet-2 hover:text-ink";

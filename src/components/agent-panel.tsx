@@ -7,13 +7,29 @@ import { easeOut } from "@/lib/motion";
 import { useStore } from "@/lib/store";
 import { Button, fieldClass } from "./ui";
 
-const prompts = ["Meu salário é R$ 5.400", "100 reais de uber", "Gastei R$ 85 no mercado"];
+// Os quatro primeiros ficam à vista. Os outros abrem em "Mais exemplos". Tocar preenche o campo, não envia.
+const prompts = [
+  "vale alimentação de 350 reais",
+  "quanto gastei esse mês?",
+  "qual meu saldo?",
+  "Gastei R$ 85 no mercado",
+  "Meu salário é R$ 5.400",
+  "maior gasto",
+  "quanto falta pra meta?",
+  "desfaz",
+];
+const VISIBLE_PROMPTS = 4;
+const tabs = [
+  { id: "agente", label: "Agente" },
+  { id: "dicas", label: "Dicas" },
+] as const;
 
 export function AgentPanel({ sheetId, compact = false }: { sheetId: string; compact?: boolean }) {
   const { state, send } = useStore();
   const reduce = useReducedMotion();
   const [text, setText] = useState("");
   const [tab, setTab] = useState<"agente" | "dicas">("agente");
+  const [moreExamples, setMoreExamples] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const sheet = state.sheets.find((item) => item.id === sheetId);
@@ -21,12 +37,12 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
   const advice = useMemo(() => (sheet ? tips(state, sheet) : []), [sheet, state]);
   const inputId = `chat-${sheetId}${compact ? "-c" : ""}`;
 
-  // A conversa sempre abre na última mensagem, e cada resposta nova rola até ela.
+  // A conversa sempre abre na última mensagem, e cada resposta nova pula até ela, sem rolagem animada.
   useEffect(() => {
     const box = list.current;
     if (!box) return;
-    box.scrollTo({ top: box.scrollHeight, behavior: reduce ? "auto" : "smooth" });
-  }, [messages.length, tab, reduce]);
+    box.scrollTop = box.scrollHeight;
+  }, [messages.length, tab]);
 
   if (!sheet) return null;
 
@@ -41,48 +57,51 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
 
   return (
     <aside className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas-2" aria-label="Agente">
-      <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-3" role="tablist" aria-label="Agente e dicas">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "agente"}
-          onClick={() => setTab("agente")}
-          className={`min-h-9 rounded-full px-3 text-sm ${tab === "agente" ? "bg-surface-2 text-ink" : "text-muted hover:text-ink"}`}
-        >
-          Agente
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "dicas"}
-          onClick={() => setTab("dicas")}
-          className={`min-h-9 rounded-full px-3 text-sm ${tab === "dicas" ? "bg-surface-2 text-ink" : "text-muted hover:text-ink"}`}
-        >
-          Dicas
-        </button>
+      <div className="shrink-0 border-b border-line p-3">
+        <div className="relative grid grid-cols-2 rounded-md bg-canvas p-0.5" role="tablist" aria-label="Agente e dicas">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[5px] border-b-2 border-violet bg-surface-2 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[var(--ease-out)]"
+            style={{ transform: tab === "agente" ? "translateX(0)" : "translateX(100%)" }}
+          />
+          {tabs.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              onClick={() => setTab(item.id)}
+              className={`tint relative min-h-10 rounded-md px-4 text-sm ${tab === item.id ? "text-ink" : "text-muted hover:text-ink"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
       {tab === "agente" ? (
         <>
           <div
             ref={list}
-            className={`relative min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 ${compact ? "max-h-72 lg:max-h-none" : ""}`}
+            className={`relative min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 ${compact ? "max-h-72 lg:max-h-none" : ""}`}
             aria-live="polite"
             aria-relevant="additions"
           >
             {messages.length === 0 ? (
-              <p className="text-sm leading-relaxed text-muted">
-                Estou na planilha {sheet.name}. Escreva um gasto ou uma entrada, como nos exemplos abaixo.
+              <p className="sheet-grid rounded-lg border border-line px-3 py-3 text-sm leading-relaxed text-muted">
+                Estou na planilha {sheet.name}. Escreva um gasto ou uma entrada, ou pergunte algo como “quanto gastei esse mês?”. Os exemplos abaixo preenchem o campo.
               </p>
             ) : (
               <AnimatePresence initial={false}>
                 {messages.map((message) => (
                   <motion.p
                     key={message.id}
-                    initial={reduce ? false : { opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: reduce ? 0 : 0.2, ease: easeOut }}
-                    className={`max-w-[95%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                      message.role === "user" ? "ml-auto bg-surface-2 text-ink" : "bg-surface text-ink"
+                    initial={reduce ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: reduce ? 0 : 0.12, ease: easeOut }}
+                    className={`text-sm leading-relaxed whitespace-pre-line [overflow-wrap:anywhere] ${
+                      message.role === "user"
+                        ? "ml-auto w-fit max-w-[88%] rounded-lg bg-surface-2 px-3 py-2 text-ink"
+                        : "max-w-[95%] border-l border-violet-2/40 py-0.5 pl-3 text-ink"
                     }`}
                   >
                     <span className="sr-only">{message.role === "user" ? "Você: " : "Agente: "}</span>
@@ -92,8 +111,8 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
               </AnimatePresence>
             )}
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2 px-3 pt-2 pb-2">
-            {prompts.map((prompt) => (
+          <div className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-t border-line px-3 pt-2 pb-2">
+            {(moreExamples ? prompts : prompts.slice(0, VISIBLE_PROMPTS)).map((prompt) => (
               <button
                 key={prompt}
                 type="button"
@@ -101,11 +120,19 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
                   setText(prompt);
                   input.current?.focus();
                 }}
-                className="min-h-9 rounded-full border border-line px-3 text-left text-xs text-muted hover:border-violet-2 hover:text-ink"
+                className="tint min-h-10 rounded-md border border-line px-3 text-left text-xs text-muted hover:border-violet-2 hover:text-ink"
               >
                 {prompt}
               </button>
             ))}
+            <button
+              type="button"
+              aria-expanded={moreExamples}
+              onClick={() => setMoreExamples((value) => !value)}
+              className="tint min-h-10 rounded-md px-3 text-xs text-violet-2 hover:text-ink"
+            >
+              {moreExamples ? "Menos exemplos" : "Mais exemplos"}
+            </button>
           </div>
           <form onSubmit={submit} className="flex shrink-0 gap-2 border-t border-line p-3">
             <label className="sr-only" htmlFor={inputId}>
@@ -123,11 +150,14 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
           </form>
         </>
       ) : (
-        <ul className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4">
-          {advice.length === 0 ? <li className="text-sm text-muted">Sem dica por enquanto. Elas aparecem quando há gastos lançados.</li> : null}
-          {advice.map((tip) => (
-            <li key={tip} className="rounded-2xl border border-line bg-surface p-3 text-sm leading-relaxed text-ink">
-              {tip}
+        <ul className="ruled min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-1">
+          {advice.length === 0 ? (
+            <li className="sheet-grid my-3 rounded-lg border border-line px-3 py-3 text-sm text-muted">Sem dica por enquanto. Elas aparecem quando há gastos lançados.</li>
+          ) : null}
+          {advice.map((tip, index) => (
+            <li key={tip} className="flex gap-3 py-3 text-sm leading-relaxed text-ink">
+              <span className="num mt-0.5 shrink-0 text-xs text-faint">{String(index + 1).padStart(2, "0")}</span>
+              <span className="min-w-0">{tip}</span>
             </li>
           ))}
         </ul>

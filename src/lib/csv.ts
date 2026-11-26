@@ -1,5 +1,9 @@
 import { ENTRY_LABEL, type Entry } from "./types";
 
+// Limites de um CSV importado: arquivo e linhas. Passar disso deixaria a planilha grande demais para salvar.
+export const CSV_MAX_BYTES = 2_000_000;
+export const CSV_MAX_ROWS = 5000;
+
 // Transforma os bytes de um arquivo enviado em texto. Tira o BOM, lê UTF-8 e, se os bytes não forem
 // UTF-8 válido (o "CSV" do Excel no Windows sai em Windows-1252), lê como windows-1252.
 export function decodeCsvBytes(bytes: ArrayBuffer): string {

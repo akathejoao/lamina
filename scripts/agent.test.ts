@@ -262,3 +262,151 @@ test("gasto com verbo não vira receita por causa da palavra", () => {
   assert.notEqual(entry?.type, "receita");
   assert.equal(entry?.category, "Lazer");
 });
+
+// ---- Perguntas e comandos ----
+
+import { addEntryTo, removeEntries } from "../src/lib/finance";
+import type { LedgerState } from "../src/lib/types";
+
+function seeded(): { ledger: LedgerState; sheet: LedgerState["sheets"][number] } {
+  const base = freshLedger("Ana");
+  const today = todayISO();
+  const month = today.slice(0, 7);
+  const draft = (type: "receita" | "fixo" | "variavel" | "investimento", title: string, category: string, cents: number, date = `${month}-02`, source?: "agente" | "manual") => ({
+    type,
+    title,
+    category,
+    cents,
+    date,
+    ...(source ? { source } : {}),
+  });
+  let ledger = base;
+  const id = base.sheets[0].id;
+  ledger = addEntryTo(ledger, id, draft("receita", "Salário", "Salário", 500_000, `${month}-01`, "manual"));
+  ledger = addEntryTo(ledger, id, draft("fixo", "Aluguel", "Moradia", 180_000, `${month}-02`, "manual"));
+  ledger = addEntryTo(ledger, id, draft("variavel", "Mercado", "Mercado", 40_000, `${month}-03`, "manual"));
+  ledger = addEntryTo(ledger, id, draft("variavel", "Uber", "Transporte", 3_000, today, "agente"));
+  ledger = addEntryTo(ledger, id, draft("investimento", "Aporte", "Reserva", 20_000, `${month}-04`, "manual"));
+  return { ledger, sheet: ledger.sheets[0] };
+}
+
+function say(text: string) {
+  const { ledger, sheet } = seeded();
+  return interpret(text, ledger, sheet);
+}
+
+test("quanto gastei responde com o total do ciclo, do dia e da categoria", () => {
+  assert.match(say("quanto gastei esse mês?").reply, /^Em \S+ você gastou R\$\s?2\.230,00/);
+  assert.match(say("quanto gastei no mês").reply, /R\$\s?2\.230,00 em 3 lançamentos/);
+  assert.match(say("Quanto q gastei?").reply, /R\$\s?2\.230,00/);
+  assert.match(say("qto vc gastou").reply, /R\$\s?2\.230,00/);
+  assert.match(say("quanto gastei hoje").reply, /^Hoje você gastou R\$\s?30,00 em 1 lançamento\./);
+  assert.match(say("quanto gastei com mercado").reply, /R\$\s?400,00 com Mercado \(1 lançamento\), 18% do gasto/);
+  assert.match(say("quanto gastei com transporte?").reply, /R\$\s?30,00 com Transporte/);
+  assert.match(say("quanto gastei com uber").reply, /R\$\s?30,00 com Transporte/);
+  assert.match(say("quanto gastei com reserva").reply, /guardou R\$\s?200,00 em Reserva/);
+  assert.match(say("quanto gastei com cinema").reply, /^Não achei gasto com Lazer em /);
+  assert.match(say("quanto gastei com saude").reply, /Não achei gasto com Saúde/);
+  assert.match(say("quanto gastei ontem").reply, /Não há gasto lançado ontem/);
+});
+
+test("saldo, quanto sobrou, quanto tenho livre e como estou mostram renda, gasto, guardado e livre", () => {
+  for (const phrase of ["qual é meu saldo?", "qual meu saldo", "qual o meu saldo vc sabe", "quanto sobrou?", "quanto tenho livre", "como estou?", "como tô", "como to indo", "como tô de grana"]) {
+    const reply = say(phrase);
+    assert.equal(reply.entry, undefined, phrase);
+    assert.match(reply.reply, /entrou R\$\s?5\.000,00, você gastou R\$\s?2\.230,00 e guardou R\$\s?200,00\. Livre: R\$\s?2\.570,00\./, phrase);
+  }
+  assert.match(say("qual meu saldo").reply, /por dia nos \d+ dias/);
+});
+
+test("maior gasto e onde gastei mais", () => {
+  for (const phrase of ["maior gasto", "qual o maior gasto?", "onde gastei mais", "onde eu gastei mais?", "onde mais gastei"]) {
+    const reply = say(phrase).reply;
+    assert.match(reply, /Maior categoria: Moradia, R\$\s?1\.800,00, 81% do gasto\. Maior lançamento: Aluguel, R\$\s?1\.800,00/, phrase);
+  }
+  assert.match(interpret("maior gasto", state, sheet).reply, /Ainda não há gasto/);
+});
+
+test("quanto falta pra meta usa a reserva e nunca diz que chegou com meta zero", () => {
+  const unset = interpret("quanto falta pra meta?", state, sheet);
+  assert.match(unset.reply, /ainda não está definida/);
+  assert.match(unset.reply, /Defina a meta no Perfil/);
+  assert.doesNotMatch(unset.reply, /já chegou/);
+  assert.doesNotMatch(interpret("simule se eu guardar 400", state, sheet).reply, /já chegou/);
+  assert.match(interpret("simule se eu guardar 400", state, sheet).reply, /Defina a meta no Perfil/);
+
+  const { ledger, sheet: filled } = seeded();
+  const withGoal: LedgerState = { ...ledger, goals: [{ id: "goal-reserva", name: "Reserva de emergência", targetCents: 1_000_000, savedCents: 200_000, note: "" }] };
+  const reply = interpret("quanto falta pra reserva", withGoal, filled).reply;
+  assert.match(reply, /Faltam R\$\s?8\.000,00/);
+  assert.match(reply, /20%/);
+  assert.match(reply, /fecha em 40 meses/);
+  assert.match(interpret("quanto falta pra meta", { ...withGoal, goals: [{ ...withGoal.goals[0], savedCents: 1_000_000 }] }, filled).reply, /já chegou na meta de R\$\s?10\.000,00/);
+});
+
+test("resumo traz três linhas curtas", () => {
+  for (const phrase of ["resumo", "resumo do mês", "me dá um resumo"]) {
+    const lines = say(phrase).reply.split("\n");
+    assert.equal(lines.length, 3, phrase);
+    assert.match(lines[0], /entrou R\$\s?5\.000,00, gastou R\$\s?2\.230,00 e guardou R\$\s?200,00\. Livre: R\$\s?2\.570,00\./);
+    assert.match(lines[1], /Maior categoria: Moradia/);
+  }
+  assert.match(interpret("resumo", state, sheet).reply, /Ainda não há lançamentos/);
+});
+
+test("desfaz remove só o último lançamento do chat nesta planilha", () => {
+  const { ledger, sheet: current } = seeded();
+  const out = interpret("desfaz", ledger, current);
+  const target = ledger.entries.find((entry) => entry.source === "agente");
+  assert.ok(target);
+  assert.equal(out.undoEntryId, target.id);
+  assert.equal(out.entry, undefined);
+  assert.match(out.reply, /Apaguei o último lançamento do chat: Uber, R\$\s?30,00/);
+  assert.match(out.reply, /Livre agora: R\$\s?2\.600,00/);
+  for (const phrase of ["desfazer", "apaga o último", "apagar último lançamento", "cancela o último", "Apagar o ultimo lancamento", "desfazer o último lançamento"]) {
+    assert.equal(interpret(phrase, ledger, current).undoEntryId, target.id, phrase);
+  }
+  const after = removeEntries(ledger, (entry) => entry.id === out.undoEntryId);
+  assert.equal(after.entries.length, ledger.entries.length - 1);
+  const none = interpret("desfaz", after, current);
+  assert.equal(none.undoEntryId, undefined);
+  assert.match(none.reply, /Não há nada para desfazer/);
+  // Lançamento manual ou de outra planilha não conta.
+  assert.equal(interpret("desfaz", state, sheet).undoEntryId, undefined);
+  const other = { ...ledger, sheets: [...ledger.sheets, { ...current, id: "outra", name: "Outra" }] };
+  assert.equal(interpret("desfaz", other, other.sheets[1]).undoEntryId, undefined);
+  // Dois lançamentos do chat: vence o mais recente.
+  const two = addEntryTo(ledger, current.id, { type: "variavel", title: "Padaria", category: "Mercado", cents: 1_500, date: todayISO(), source: "agente" });
+  assert.equal(interpret("desfaz", two, current).undoEntryId, two.entries.at(-1)?.id);
+});
+
+test("nenhuma pergunta ou comando cria lançamento", () => {
+  const phrases = [
+    "quanto gastei esse mês", "quanto gastei no mês?", "quanto gastei hoje", "quanto gastei com mercado", "quanto q gastei",
+    "qual é meu saldo", "quanto sobrou", "quanto tenho livre", "como estou", "como tô?",
+    "maior gasto", "onde gastei mais", "quanto falta pra meta", "quanto falta pra reserva",
+    "resumo", "resumo do mês", "desfaz", "desfazer", "apaga o último", "apagar último lançamento", "cancela o último",
+  ];
+  const { ledger, sheet: current } = seeded();
+  for (const phrase of phrases) {
+    for (const [s, sh] of [[state, sheet], [ledger, current]] as const) {
+      const out = interpret(phrase, s, sh);
+      assert.equal(out.entry, undefined, phrase);
+      assert.equal(out.csv, undefined, phrase);
+      assert.ok(out.reply.length > 0, phrase);
+      assert.doesNotMatch(out.reply, /—|–/, phrase);
+    }
+  }
+});
+
+test("lançar continua funcionando perto das palavras novas", () => {
+  assert.equal(ask("saldo acumulado 500").entry?.cents, 50000);
+  assert.equal(ask("gastei 50 no resumo").entry?.cents, 5000);
+});
+
+test("descrição, valor e destino curto: aporte de 400 na reserva vira investimento", () => {
+  const outcome = interpret("aporte de 400 na reserva", state, sheet);
+  assert.equal(outcome.entry?.type, "investimento");
+  assert.equal(outcome.entry?.cents, 40000);
+  assert.equal(outcome.entry?.category, "Reserva");
+});

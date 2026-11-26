@@ -65,6 +65,7 @@ function cookieHeader(pair: string, maxAge: number, request: Request): string {
 }
 
 function isSecure(request: Request): boolean {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") return true;
   if (new URL(request.url).protocol === "https:") return true;
   const forwarded = request.headers.get("x-forwarded-proto") ?? "";
   return forwarded.split(",").some((part) => part.trim() === "https");

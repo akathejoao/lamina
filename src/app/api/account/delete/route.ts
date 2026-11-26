@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const email = session ? null : cleanEmail(body?.email);
   if (!session && !email) return jsonError(401, "Informe o e-mail e a senha da conta.");
   const key = session ? `delete:${session.userId}` : `delete:${email}`;
-  if (limited(key, 8, 15 * 60 * 1000)) {
+  if (await limited(key, 8, 15 * 60 * 1000)) {
     return jsonError(429, "Muitas tentativas. Espere quinze minutos.");
   }
   const rows = session

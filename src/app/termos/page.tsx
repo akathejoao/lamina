@@ -32,7 +32,7 @@ export default function TermsPage() {
         Estes termos se regem pelas leis do Brasil. Direitos previstos na Lei Geral de Proteção de Dados estão descritos no aviso de privacidade e não são reduzidos por este texto.
       </p>
       <p>
-        <Link href="/privacidade" className="text-violet-2">Ler o aviso de privacidade</Link>
+        <Link href="/privacidade" className="inline-flex min-h-10 items-center text-violet-2 hover:text-ink">Ler o aviso de privacidade</Link>
       </p>
     </LegalShell>
   );

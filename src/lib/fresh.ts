@@ -1,6 +1,7 @@
 import { monthKey, todayISO } from "./money";
 import { safePhoto } from "./photo";
 import type { LedgerState } from "./types";
+import { MAX_MESSAGE, MAX_TEXT } from "./validate";
 
 export function freshLedger(name: string): LedgerState {
   const month = monthKey(todayISO());
@@ -62,12 +63,40 @@ export function isLedger(value: unknown): value is LedgerState {
 // planilha nunca passar do limite que o servidor aceita e parar de salvar.
 export const MESSAGE_KEEP = 1_000;
 
+// Corta textos que passam do limite do servidor, para o aparelho nunca montar uma planilha
+// que o servidor recusa por um título ou uma mensagem longos. Sem corte, devolve o mesmo objeto.
+function clip<T extends object>(item: T, keys: readonly (keyof T)[], max: number): T {
+  let next: T | null = null;
+  for (const key of keys) {
+    const value = item[key];
+    if (typeof value === "string" && value.length > max) {
+      next ??= { ...item };
+      (next as Record<keyof T, unknown>)[key] = value.slice(0, max);
+    }
+  }
+  return next ?? item;
+}
+
+function clipAll<T extends object>(items: T[], keys: readonly (keyof T)[], max: number): T[] {
+  let changed = false;
+  const next = items.map((item) => {
+    const clipped = clip(item, keys, max);
+    if (clipped !== item) changed = true;
+    return clipped;
+  });
+  return changed ? next : items;
+}
+
 export function scrubLedger(ledger: LedgerState): LedgerState {
+  const kept = ledger.messages.length > MESSAGE_KEEP ? ledger.messages.slice(-MESSAGE_KEEP) : ledger.messages;
   return {
     ...ledger,
-    messages: ledger.messages.length > MESSAGE_KEEP ? ledger.messages.slice(-MESSAGE_KEEP) : ledger.messages,
+    sheets: clipAll(ledger.sheets, ["name", "note"], MAX_TEXT),
+    entries: clipAll(ledger.entries, ["title", "category"], MAX_TEXT),
+    goals: clipAll(ledger.goals, ["name", "note"], MAX_TEXT),
+    messages: clipAll(kept, ["text"], MAX_MESSAGE),
     profile: {
-      ...ledger.profile,
+      ...clip(ledger.profile, ["name", "handle"], 80),
       photoDataUrl: safePhoto(ledger.profile.photoDataUrl),
     },
   };

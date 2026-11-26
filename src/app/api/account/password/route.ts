@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!session) return jsonError(401, "Entre para trocar a senha.");
   const gate = await requireActive(session.userId);
   if (gate instanceof Response) return gate;
-  if (limited(`password:${session.userId}`, 8, 15 * 60 * 1000)) {
+  if (await limited(`password:${session.userId}`, 8, 15 * 60 * 1000)) {
     return jsonError(429, "Muitas tentativas. Espere quinze minutos.");
   }
   const body = asRecord(await readJson(request));

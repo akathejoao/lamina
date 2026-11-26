@@ -35,13 +35,13 @@ export function SliceChart({
   });
 
   return (
-    <figure className="@container min-w-0 rounded-2xl border border-line bg-surface p-4">
-      <figcaption className="kicker">Fatias do que saiu</figcaption>
+    <figure className="@container min-w-0">
+      <figcaption className="text-xl">Fatias do que saiu</figcaption>
       {total <= 0 ? (
-        <p className="mt-4 text-sm text-muted">Quando houver gasto ou aporte, cada fatia aparece aqui.</p>
+        <p className="sheet-grid mt-3 rounded-lg border border-line px-4 py-3 text-sm text-muted">Quando houver gasto ou aporte, cada fatia aparece aqui.</p>
       ) : (
-        <div className="mt-4 flex min-w-0 flex-col items-center gap-4 @sm:flex-row">
-          <svg viewBox="0 0 120 120" className="size-40 shrink-0 overflow-visible" role="img" aria-label="Gráfico das fatias essenciais, estilo de vida e futuro">
+        <div className="mt-3 flex min-w-0 flex-col items-center gap-4 @sm:flex-row">
+          <svg viewBox="0 0 120 120" className="size-36 shrink-0 overflow-visible" role="img" aria-label="Gráfico das fatias essenciais, estilo de vida e futuro">
             <g transform="rotate(-90 60 60)">
               {arcs.map((slice) => {
                 const selected = active === null || active === slice.key;
@@ -72,7 +72,7 @@ export function SliceChart({
               {active ? slices.find((slice) => slice.key === active)?.label : futuro > 0 ? "saídas" : "no total"}
             </text>
           </svg>
-          <ul className="w-full min-w-0 space-y-2">
+          <ul className="ruled w-full min-w-0 border-y border-line">
             {slices.map((slice) => {
               const share = Math.round((values[slice.key] / total) * 100);
               return (
@@ -81,7 +81,7 @@ export function SliceChart({
                     type="button"
                     onClick={() => setActive((current) => (current === slice.key ? null : slice.key))}
                     aria-pressed={active === slice.key}
-                    className="tint flex min-h-9 w-full min-w-0 flex-wrap items-center justify-between gap-x-3 rounded-xl px-2 py-1.5 text-left hover:bg-canvas"
+                    className="tint flex min-h-10 w-full min-w-0 flex-wrap items-center justify-between gap-x-3 rounded-md px-2 py-1.5 text-left hover:bg-surface-2/50 aria-pressed:bg-surface-2"
                   >
                     <span className="flex items-center gap-2 text-sm">
                       <span className="size-2.5 shrink-0 rounded-full" style={{ background: slice.color }} aria-hidden="true" />

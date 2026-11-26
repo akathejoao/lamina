@@ -22,6 +22,8 @@ export type EntryType =
   | "assinatura"
   | "investimento";
 
+export type EntrySource = "agente" | "manual" | "csv";
+
 export type Entry = {
   id: string;
   sheetId: string;
@@ -32,6 +34,7 @@ export type Entry = {
   date: string;
   dueDay: number | null;
   installment: { current: number; total: number } | null;
+  source?: EntrySource;
 };
 
 export type Sheet = {
