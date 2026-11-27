@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Mark } from "./mark";
 import { Button, Field, fieldClass } from "./ui";
+import { FormError } from "./motion-bits";
 
 type Reply = { error?: string; blocked?: boolean; adminCode?: boolean } | null;
 
@@ -180,9 +181,7 @@ export function AuthScreen({ mode }: { mode: "entrar" | "criar" }) {
               </div>
             ) : null}
             {error ? (
-              <p className="text-sm text-coral" role="alert">
-                {error}
-              </p>
+              <FormError>{error}</FormError>
             ) : null}
             <Button type="submit" disabled={pending}>
               {pending ? "Um instante…" : creating ? "Criar conta" : "Entrar"}

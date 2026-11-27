@@ -11,6 +11,7 @@ import { NOVEMBER, useStore } from "@/lib/store";
 import { ENTRY_LABEL } from "@/lib/types";
 import { AgentPanel } from "./agent-panel";
 import { Mark } from "./mark";
+import { Reveal, Rolling } from "./motion-bits";
 import { SheetStage, Split } from "./sheet-stage";
 
 // O que o agente entende, lido por ele mesmo sobre o exemplo: frases de lançamento viram linha, perguntas viram resposta.
@@ -73,13 +74,13 @@ export function Landing() {
         <section className="relative overflow-hidden">
           <div className="sheet-grid sheet-grid-fade pointer-events-none absolute inset-0" aria-hidden="true" />
           <div className="relative mx-auto grid max-w-6xl items-end gap-10 px-4 pt-12 pb-14 md:grid-cols-[1.3fr_0.7fr] md:pt-20 md:pb-16">
-            <div className="hero-in">
-              <p className="col-label" aria-hidden="true">01&nbsp;&nbsp;PLANILHA + AGENTE</p>
-              <h1 className="display mt-4 text-[clamp(3rem,7.4vw,6rem)] leading-[0.92]">O mês inteiro numa tela só.</h1>
-              <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted">
+            <div>
+              <p className="hero-in col-label" aria-hidden="true">01&nbsp;&nbsp;PLANILHA + AGENTE</p>
+              <h1 className="hero-in display mt-4 text-[clamp(3rem,7.4vw,6rem)] leading-[0.92]" style={{ animationDelay: "50ms" }}>O mês inteiro numa tela só.</h1>
+              <p className="hero-in mt-6 max-w-lg text-lg leading-relaxed text-muted" style={{ animationDelay: "110ms" }}>
                 Escreva o gasto como fala. O agente lança na planilha e mostra quanto ainda cabe no mês.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="hero-in mt-8 flex flex-wrap gap-3" style={{ animationDelay: "170ms" }}>
                 <Link href="/criar-conta" className={primary}>
                   Criar conta
                 </Link>
@@ -88,7 +89,7 @@ export function Landing() {
                 </Link>
               </div>
             </div>
-            <aside className="hero-in blade rounded-lg border border-line bg-surface" style={{ animationDelay: "90ms" }} aria-label="Resumo do exemplo">
+            <aside className="hero-in blade rounded-lg border border-line bg-surface" style={{ animationDelay: "140ms" }} aria-label="Resumo do exemplo">
               <table className="w-full text-sm">
                 <caption className="sr-only">{sheet?.month ? `${formatMonth(sheet.month)}, em números` : "O mês em números"}</caption>
                 <thead>
@@ -104,11 +105,11 @@ export function Landing() {
                   </tr>
                 </thead>
                 <tbody className="[&>tr+tr]:border-t [&>tr+tr]:border-line">
-                  <LedgerRow n={1} k="Entradas" v={numbers ? formatBRL(numbers.income) : "sem dados"} tone="text-mint" />
-                  <LedgerRow n={2} k="Saídas" v={numbers ? formatBRL(numbers.burn) : "sem dados"} tone="text-coral" />
-                  <LedgerRow n={3} k="Guardado" v={numbers ? formatBRL(numbers.invested) : "sem dados"} />
-                  <LedgerRow n={4} k="Livre" v={numbers ? formatBRL(numbers.free) : "sem dados"} total />
-                  <LedgerRow n={5} k="Por dia" v={numbers ? formatBRL(numbers.daily) : "sem dados"} />
+                  <LedgerRow n={1} k="Entradas" v={numbers ? <Rolling cents={numbers.income} /> : "sem dados"} tone="text-mint" />
+                  <LedgerRow n={2} k="Saídas" v={numbers ? <Rolling cents={numbers.burn} /> : "sem dados"} tone="text-coral" />
+                  <LedgerRow n={3} k="Guardado" v={numbers ? <Rolling cents={numbers.invested} /> : "sem dados"} />
+                  <LedgerRow n={4} k="Livre" v={numbers ? <Rolling cents={numbers.free} /> : "sem dados"} total />
+                  <LedgerRow n={5} k="Por dia" v={numbers ? <Rolling cents={numbers.daily} /> : "sem dados"} />
                 </tbody>
               </table>
               <p className="border-t border-line px-3 py-3 text-xs leading-relaxed text-muted">
@@ -119,7 +120,7 @@ export function Landing() {
         </section>
 
         <section id="palco" className="border-t border-line">
-          <div className="mx-auto max-w-6xl px-4 pt-10 pb-20">
+          <Reveal className="mx-auto max-w-6xl px-4 pt-10 pb-20">
             <div className="overflow-hidden rounded-lg border border-line bg-canvas">
               <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-1.5">
                 <div className="flex min-w-0 items-center gap-2 text-sm">
@@ -185,7 +186,7 @@ export function Landing() {
             <p className="mt-3 max-w-2xl text-sm text-muted">
               Esta janela é uma demonstração que fica só neste navegador. Na conta, a planilha é cifrada com a sua senha.
             </p>
-          </div>
+          </Reveal>
         </section>
 
         <Section id="ciclos" col="02" label="CICLOS">
@@ -284,7 +285,7 @@ export function Landing() {
 
         <section className="relative overflow-hidden border-t border-line">
           <div className="sheet-grid sheet-grid-fade pointer-events-none absolute inset-0" aria-hidden="true" />
-          <div className="relative mx-auto max-w-6xl px-4 py-24">
+          <Reveal className="relative mx-auto max-w-6xl px-4 py-24">
             <h2 className="display max-w-4xl text-[clamp(2.5rem,6vw,4.5rem)] leading-[0.95]">O extrato não se organiza sozinho.</h2>
             <p className="mt-5 max-w-lg text-muted">Abre no navegador ou instala no Windows. A planilha fica cifrada na sua conta.</p>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -295,7 +296,7 @@ export function Landing() {
                 Entrar
               </Link>
             </div>
-          </div>
+          </Reveal>
         </section>
       </main>
 
@@ -322,18 +323,20 @@ function Section({ id, col, label, children }: { id: string; col: string; label:
   return (
     <section id={id} className="scroll-mt-14 border-t border-line">
       <div className="mx-auto max-w-6xl px-4 pt-6 pb-20">
+        <Reveal>
         <p className="col-label mb-10 flex items-center gap-3" aria-hidden="true">
           <span>{col}</span>
           <span>{label}</span>
           <span className="h-px flex-1 bg-line" />
         </p>
         {children}
+        </Reveal>
       </div>
     </section>
   );
 }
 
-function LedgerRow({ n, k, v, tone = "", total = false }: { n: number; k: string; v: string; tone?: string; total?: boolean }) {
+function LedgerRow({ n, k, v, tone = "", total = false }: { n: number; k: string; v: ReactNode; tone?: string; total?: boolean }) {
   return (
     <tr className={total ? "border-t-ink/40! bg-surface-2/60" : ""}>
       <td className="col-label w-9 px-3 py-2.5 align-baseline" aria-hidden="true">{n}</td>

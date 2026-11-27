@@ -7,8 +7,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { createPortal } from "react-dom";
 import { GraduationCap, House, MessageSquareText, Shield, Table2, UserRound } from "lucide-react";
 import { currentMonthly } from "@/lib/finance";
+import { FILL_EVENT } from "@/lib/motion";
 import { useStore, type SaveState } from "@/lib/store";
 import { Mark } from "./mark";
+import { ThemeButton } from "./theme-toggle";
 
 type SideSlot = {
   element: HTMLElement | null;
@@ -52,6 +54,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const release = useCallback(() => setSideCount((count) => Math.max(0, count - 1)), []);
   const sideSlot = useMemo<SideSlot>(() => ({ element: sideElement, claim, release }), [sideElement, claim, release]);
   const hasSide = sideCount > 0;
+  useEffect(() => {
+    // Uma frase de exemplo chegou do estado vazio: no celular, abre o painel do agente.
+    const open = () => setAgentPath(pathname);
+    window.addEventListener(FILL_EVENT, open);
+    return () => window.removeEventListener(FILL_EVENT, open);
+  }, [pathname]);
 
   const items: NavItem[] = [
     { href: "/app", label: "Início", Icon: House, active: pathname === "/app" },
@@ -108,15 +116,18 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <RailLink key={item.label} item={item} />
               ))}
             </div>
-            {logout ? (
-              <button
-                type="button"
-                className="tint mt-auto min-h-11 w-12 rounded-md text-xs text-muted hover:bg-surface hover:text-ink"
-                onClick={() => void logout()}
-              >
-                Sair
-              </button>
-            ) : null}
+            <div className="mt-auto flex flex-col items-center gap-1">
+              <ThemeButton />
+              {logout ? (
+                <button
+                  type="button"
+                  className="tint min-h-11 w-12 rounded-md text-xs text-muted hover:bg-surface hover:text-ink"
+                  onClick={() => void logout()}
+                >
+                  Sair
+                </button>
+              ) : null}
+            </div>
           </nav>
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
             {hasSide && !agentOpen ? (

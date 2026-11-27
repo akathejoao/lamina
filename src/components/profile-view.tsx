@@ -9,6 +9,8 @@ import { safePhoto } from "@/lib/photo";
 import { useStore } from "@/lib/store";
 import type { Banner, Goal, Tone } from "@/lib/types";
 import { Button, Field, fieldClass, textLink } from "./ui";
+import { FormError } from "./motion-bits";
+import { ThemeToggle } from "./theme-toggle";
 
 const levels = ["Crítico", "Equilibrado", "Poupador", "Investidor"] as const;
 
@@ -27,7 +29,7 @@ export function ProfileView() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
-      <div className={`relative h-32 rounded-lg border border-line ${bannerClass(state.profile.banner)}`}>
+      <div className={`keep-dark relative h-32 rounded-lg border border-line ${bannerClass(state.profile.banner)}`}>
         <div className="absolute bottom-4 left-4 flex items-end gap-3">
           <Avatar name={state.profile.name} photo={photo} />
           <div className="min-w-0">
@@ -137,15 +139,17 @@ export function ProfileView() {
               />
             </Field>
             {photoNote ? (
-              <p className="text-sm text-coral" role="alert">
-                {photoNote}
-              </p>
+              <FormError>{photoNote}</FormError>
             ) : null}
             {photo ? (
               <Button type="button" tone="ghost" className="justify-self-start" onClick={() => updateProfile({ photoDataUrl: null })}>
                 Remover a foto
               </Button>
             ) : null}
+            <div className="text-sm text-muted">
+              <span className="mb-1.5 block">Tema</span>
+              <ThemeToggle />
+            </div>
             <Field label="Banner">
               <select className={fieldClass} value={state.profile.banner} onChange={(event) => updateProfile({ banner: event.target.value as Banner })}>
                 <option value="violeta">Violeta</option>

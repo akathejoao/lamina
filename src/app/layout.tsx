@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0c0b10",
-  colorScheme: "dark",
+  colorScheme: "dark light",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -46,7 +46,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${outfit.variable} ${syne.variable} ${plex.variable} h-full`}>
+    <html lang="pt-BR" className={`${outfit.variable} ${syne.variable} ${plex.variable} h-full`} suppressHydrationWarning>
+      <head>
+        {/* Síncrono de propósito: define o tema antes da primeira pintura. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/theme-boot.js" />
+      </head>
       <body className="min-h-full antialiased">
         <StoreProvider>{children}</StoreProvider>
       </body>

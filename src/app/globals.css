@@ -4,6 +4,13 @@
   --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-syne), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex), ui-monospace, monospace;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Cores ficam como variáveis (sem "inline") para o tema claro poder trocar os valores. O escuro é o padrão. */
+@theme {
   --color-canvas: #0c0b10;
   --color-canvas-2: #121018;
   --color-surface: #17151f;
@@ -18,9 +25,71 @@
   --color-mint: #b6ffd2;
   --color-coral: #ff8aa0;
   --color-amber: #ffc56d;
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+:root {
+  color-scheme: dark;
+  --slice-essenciais: #8ec5ff;
+  --slice-estilo: #ff8aa0;
+  --slice-futuro: #b6ffd2;
+  --accent-violeta: #7c5cff;
+  --accent-menta: #b6ffd2;
+  --accent-coral: #ff8aa0;
+  --accent-ambar: #ffc56d;
+  --grid-line: rgb(246 243 251 / 0.045);
+  --focus-ring: #c4b6ff;
+  --on-violet: #f6f3fb;
+}
+
+/* Tema claro: mesmos tokens, papel quase branco, tinta escura e o mesmo violeta nas ações. Cores de dado escurecidas para AA sobre branco. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-canvas: #f7f5fb;
+  --color-canvas-2: #efecf6;
+  --color-surface: #ffffff;
+  --color-surface-2: #ebe7f4;
+  --color-ink: #17141f;
+  --color-muted: #4b4360;
+  --color-faint: #655c79;
+  --color-line: rgb(23 20 31 / 0.14);
+  --color-field: rgb(23 20 31 / 0.5);
+  --color-violet: #6d4df2;
+  --color-violet-2: #5334d4;
+  --color-mint: #0a7040;
+  --color-coral: #bf2342;
+  --color-amber: #8a5600;
+  --slice-essenciais: #1e68b0;
+  --slice-estilo: #c8304f;
+  --slice-futuro: #12834f;
+  --accent-violeta: #6d4df2;
+  --accent-menta: #12834f;
+  --accent-coral: #c8304f;
+  --accent-ambar: #a76a00;
+  --grid-line: rgb(23 20 31 / 0.06);
+  --focus-ring: #5334d4;
+  --on-violet: #ffffff;
+}
+
+/* Faixas que têm fundo escuro fixo (banner do perfil) mantêm os tokens escuros também no tema claro. */
+.keep-dark {
+  color-scheme: dark;
+  --color-canvas: #0c0b10;
+  --color-surface: #17151f;
+  --color-surface-2: #221f2c;
+  --color-ink: #f6f3fb;
+  --color-muted: #b7aec6;
+  --color-faint: #8d84a0;
+  --color-violet-2: #c4b6ff;
+  color: var(--color-ink);
+}
+
+:root[data-theme="light"] .bg-violet {
+  color: var(--on-violet);
+}
+
+:root[data-theme="light"] ::selection {
+  background: #c4b6ff;
+  color: #17141f;
 }
 
 /*
@@ -49,7 +118,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid #c4b6ff;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -134,8 +203,8 @@ input[type="checkbox"] {
 /* Grade de células da planilha, para fundo de hero e áreas vazias. */
 .sheet-grid {
   background-image:
-    linear-gradient(to right, rgb(246 243 251 / 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(246 243 251 / 0.045) 1px, transparent 1px);
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
   background-size: 96px 32px;
   background-position: -1px -1px;
 }
@@ -184,6 +253,10 @@ input[type="checkbox"] {
       border-color 150ms ease;
   }
 
+  .row-new {
+    animation: row-new 1100ms var(--ease-out) both;
+  }
+
   .route-in {
     animation: rise-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
   }
@@ -209,6 +282,16 @@ input[type="checkbox"] {
 
   .col-draw {
     animation: col-draw 520ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+}
+
+@keyframes row-new {
+  from {
+    background-color: rgb(109 77 242 / 0.16);
+  }
+
+  to {
+    background-color: rgb(109 77 242 / 0);
   }
 }
 
@@ -280,6 +363,7 @@ input[type="checkbox"] {
   }
 
   .reveal,
+  .row-new,
   .route-in,
   .route-bar,
   .arc-draw,

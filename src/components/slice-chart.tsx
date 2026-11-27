@@ -1,7 +1,7 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import { useState } from "react";
+import { motion, useInView, useReducedMotion } from "motion/react";
+import { useRef, useState } from "react";
 import { formatBRL } from "@/lib/money";
 import { easeOut } from "@/lib/motion";
 import { SLICE_COLOR } from "@/lib/sheets";
@@ -22,6 +22,8 @@ export function SliceChart({
   futuro: number;
 }) {
   const reduce = useReducedMotion();
+  const chart = useRef<SVGSVGElement>(null);
+  const seen = useInView(chart, { once: true, margin: "0px 0px -8% 0px" });
   const values = { essenciais, estilo, futuro };
   const spent = essenciais + estilo;
   const total = spent + futuro;
@@ -41,11 +43,10 @@ export function SliceChart({
         <p className="sheet-grid mt-3 rounded-lg border border-line px-4 py-3 text-sm text-muted">Quando houver gasto ou aporte, cada fatia aparece aqui.</p>
       ) : (
         <div className="mt-3 flex min-w-0 flex-col items-center gap-4 @sm:flex-row">
-          <svg viewBox="0 0 120 120" className="size-36 shrink-0 overflow-visible" role="img" aria-label="Gráfico das fatias essenciais, estilo de vida e futuro">
+          <svg ref={chart} viewBox="0 0 120 120" className="size-36 shrink-0 overflow-visible" role="img" aria-label="Gráfico das fatias essenciais, estilo de vida e futuro">
             <g transform="rotate(-90 60 60)">
               {arcs.map((slice) => {
                 const selected = active === null || active === slice.key;
-                const from = -(slice.offset + slice.length);
                 const to = -slice.offset;
                 return (
                   <motion.circle
@@ -56,19 +57,22 @@ export function SliceChart({
                     fill="none"
                     stroke={slice.color}
                     strokeWidth={active === slice.key ? 16 : 12}
-                    strokeDasharray={`${slice.length} ${circumference - slice.length}`}
-                    initial={reduce ? false : { strokeDashoffset: from, opacity: 0.4 }}
-                    animate={{ strokeDashoffset: to, opacity: selected ? 1 : 0.35 }}
-                    transition={{ duration: reduce ? 0 : 0.55, delay: reduce ? 0 : slice.index * 0.07, ease: easeOut }}
+                    initial={reduce ? false : { strokeDasharray: `0 ${circumference}`, strokeDashoffset: to, opacity: 0.4 }}
+                    animate={{
+                      strokeDasharray: reduce || seen ? `${slice.length} ${circumference - slice.length}` : `0 ${circumference}`,
+                      strokeDashoffset: to,
+                      opacity: selected ? 1 : 0.35,
+                    }}
+                    transition={{ duration: reduce ? 0 : 0.6, delay: reduce ? 0 : slice.index * 0.06, ease: easeOut }}
                     style={{ willChange: "opacity" }}
                   />
                 );
               })}
             </g>
-            <text x="60" y="57" textAnchor="middle" fill="#f6f3fb" fontSize="10" fontFamily="var(--font-plex), monospace">
+            <text x="60" y="57" textAnchor="middle" style={{ fill: "var(--color-ink)" }} fontSize="10" fontFamily="var(--font-plex), monospace">
               {active ? formatBRL(values[active]) : formatBRL(spent)}
             </text>
-            <text x="60" y="71" textAnchor="middle" fill="#b7aec6" fontSize="9">
+            <text x="60" y="71" textAnchor="middle" style={{ fill: "var(--color-muted)" }} fontSize="9">
               {active ? slices.find((slice) => slice.key === active)?.label : futuro > 0 ? "saídas" : "no total"}
             </text>
           </svg>

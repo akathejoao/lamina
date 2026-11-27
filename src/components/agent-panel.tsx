@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { tips } from "@/lib/finance";
-import { easeOut } from "@/lib/motion";
+import { easeOut, FILL_EVENT } from "@/lib/motion";
 import { useStore } from "@/lib/store";
 import { Button, fieldClass } from "./ui";
 
@@ -43,6 +43,18 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
     if (!box) return;
     box.scrollTop = box.scrollHeight;
   }, [messages.length, tab]);
+
+  useEffect(() => {
+    const onFill = (event: Event) => {
+      const phrase = (event as CustomEvent<string>).detail;
+      if (typeof phrase !== "string") return;
+      setTab("agente");
+      setText(phrase);
+      setTimeout(() => input.current?.focus(), 80);
+    };
+    window.addEventListener(FILL_EVENT, onFill);
+    return () => window.removeEventListener(FILL_EVENT, onFill);
+  }, []);
 
   if (!sheet) return null;
 
@@ -90,14 +102,14 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
               <p className="sheet-grid rounded-lg border border-line px-3 py-3 text-sm leading-relaxed text-muted">
                 Estou na planilha {sheet.name}. Escreva um gasto ou uma entrada, ou pergunte algo como “quanto gastei esse mês?”. Os exemplos abaixo preenchem o campo.
               </p>
-            ) : (
-              <AnimatePresence initial={false}>
-                {messages.map((message) => (
+            ) : null}
+            <AnimatePresence initial={false}>
+              {messages.map((message) => (
                   <motion.p
                     key={message.id}
-                    initial={reduce ? false : { opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: reduce ? 0 : 0.12, ease: easeOut }}
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: reduce ? 0.12 : 0.22, delay: reduce || message.role === "user" ? 0 : 0.14, ease: easeOut }}
                     className={`text-sm leading-relaxed whitespace-pre-line [overflow-wrap:anywhere] ${
                       message.role === "user"
                         ? "ml-auto w-fit max-w-[88%] rounded-lg bg-surface-2 px-3 py-2 text-ink"
@@ -108,8 +120,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
                     {message.text}
                   </motion.p>
                 ))}
-              </AnimatePresence>
-            )}
+            </AnimatePresence>
           </div>
           <div className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-t border-line px-3 pt-2 pb-2">
             {(moreExamples ? prompts : prompts.slice(0, VISIBLE_PROMPTS)).map((prompt) => (
@@ -120,7 +131,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
                   setText(prompt);
                   input.current?.focus();
                 }}
-                className="tint min-h-10 rounded-md border border-line px-3 text-left text-xs text-muted hover:border-violet-2 hover:text-ink"
+                className="press min-h-10 rounded-md border border-line px-3 text-left text-xs text-muted hover:border-violet-2 hover:text-ink"
               >
                 {prompt}
               </button>
@@ -129,7 +140,7 @@ export function AgentPanel({ sheetId, compact = false }: { sheetId: string; comp
               type="button"
               aria-expanded={moreExamples}
               onClick={() => setMoreExamples((value) => !value)}
-              className="tint min-h-10 rounded-md px-3 text-xs text-violet-2 hover:text-ink"
+              className="press min-h-10 rounded-md px-3 text-xs text-violet-2 hover:text-ink"
             >
               {moreExamples ? "Menos exemplos" : "Mais exemplos"}
             </button>

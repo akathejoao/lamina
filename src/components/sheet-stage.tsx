@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { PenLine } from "lucide-react";
+import { FormError, GrowBar, Rolling } from "./motion-bits";
+import { FILL_EVENT } from "@/lib/motion";
 import { X } from "lucide-react";
 import { SliceChart } from "./slice-chart";
 import { SheetForm } from "./sheet-form";
@@ -17,6 +20,31 @@ import { Button, Field, Modal, fieldClass } from "./ui";
 
 const types: EntryType[] = ["receita", "fixo", "variavel", "assinatura", "investimento"];
 
+const bannerMotion = (reduce: boolean | null) => ({
+  initial: reduce ? { opacity: 0 } : { opacity: 0, y: -4 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, transition: { duration: 0.12, ease: easeOut } },
+  transition: { duration: 0.2, ease: easeOut },
+});
+
+// Ids que acabaram de entrar na planilha (digitados, pelo agente ou desfeitos). Importações grandes não ganham destaque.
+function useFreshIds(ids: string[]): Set<string> {
+  const key = ids.join("|");
+  const [seen, setSeen] = useState({ key, ids: new Set(ids) });
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set());
+  if (seen.key !== key) {
+    const added = ids.filter((id) => !seen.ids.has(id));
+    setSeen({ key, ids: new Set(ids) });
+    setFresh(added.length > 0 && added.length <= 5 ? new Set(added) : new Set());
+  }
+  useEffect(() => {
+    if (fresh.size === 0) return;
+    const timer = setTimeout(() => setFresh(new Set()), 1200);
+    return () => clearTimeout(timer);
+  }, [fresh]);
+  return fresh;
+}
+
 export function SheetStage({ sheetId, compact = false }: { sheetId: string; compact?: boolean }) {
   const { state, addEntry, removeEntry, restoreEntry, archiveSheet, duplicateMonth, clearSheet, importRows, updateSheet, scope } = useStore();
   const sheet = state.sheets.find((item) => item.id === sheetId);
@@ -27,6 +55,8 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
   const [notice, setNotice] = useState<string | null>(null);
   const [removed, setRemoved] = useState<Entry | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const reduceMotion = useReducedMotion();
+  const freshIds = useFreshIds(state.entries.filter((entry) => entry.sheetId === sheetId).map((entry) => entry.id));
 
   useEffect(() => {
     if (!removed) return;
@@ -137,7 +167,7 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
                 {formatBRL(saved)} de {formatBRL(target)}
               </p>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
-                <div className="bar-draw h-full rounded-full" style={{ "--scale": String(Math.min(1, saved / target)), background: accent } as React.CSSProperties} />
+                <GrowBar className="h-full rounded-full" scale={saved / target} style={{ background: accent }} />
               </div>
             </div>
           ) : null}
@@ -195,9 +225,14 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
       </header>
 
       <div aria-live="polite" className="empty:hidden">
-        {notice ? <p className="px-4 pb-3 text-sm text-violet-2">{notice}</p> : null}
+        <AnimatePresence initial={false}>
+        {notice ? (
+          <motion.p key="notice" className="px-4 pb-3 text-sm text-violet-2" {...bannerMotion(reduceMotion)}>
+            {notice}
+          </motion.p>
+        ) : null}
         {removed ? (
-          <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-1.5 text-sm">
+          <motion.div key="removed" {...bannerMotion(reduceMotion)} className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-1.5 text-sm">
             <span className="min-w-0 [overflow-wrap:anywhere]">
               Removido: {removed.title}, <span className="num">{formatBRL(removed.cents)}</span>.
             </span>
@@ -211,14 +246,15 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
             >
               Desfazer
             </button>
-          </div>
+          </motion.div>
         ) : null}
+        </AnimatePresence>
       </div>
 
       <dl className="mx-4 mb-4 grid grid-cols-1 divide-y divide-line border-y border-line @lg:grid-cols-3 @lg:divide-x @lg:divide-y-0">
-        <Stat label="Entradas" value={formatBRL(numbers.income)} tone="text-mint" />
-        <Stat label="Saídas" value={formatBRL(numbers.burn)} tone="text-ink" />
-        <Stat label="Livre" value={formatBRL(numbers.free)} tone={numbers.free < 0 ? "text-coral" : "text-ink"} />
+        <Stat label="Entradas" cents={numbers.income} tone="text-mint" />
+        <Stat label="Saídas" cents={numbers.burn} tone="text-ink" />
+        <Stat label="Livre" cents={numbers.free} tone={numbers.free < 0 ? "text-coral" : "text-ink"} />
       </dl>
 
       <div className="w-full min-w-0 max-w-full px-4">
@@ -252,8 +288,17 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
                 </tr>
               </thead>
               <tbody>
+                <AnimatePresence initial={false}>
                 {entries.map((entry, index) => (
-                  <tr key={entry.id} className="border-t border-line first:border-t-0 hover:bg-surface-2/50">
+                  <motion.tr
+                    key={entry.id}
+                    layout={reduceMotion || entries.length > 80 ? false : "position"}
+                    initial={freshIds.has(entry.id) && !reduceMotion ? { opacity: 0, y: -6 } : freshIds.has(entry.id) ? { opacity: 0 } : false}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, transition: { duration: 0.14, ease: easeOut } }}
+                    transition={{ duration: 0.24, ease: easeOut, layout: { duration: 0.26, ease: easeOut } }}
+                    className={`border-t border-line first:border-t-0 hover:bg-surface-2/50 ${freshIds.has(entry.id) ? "row-new" : ""}`}
+                  >
                     <td className="num hidden border-r border-line bg-canvas-2 py-2.5 pr-2 text-right text-xs text-faint @2xl:table-cell">{index + 1}</td>
                     <td className="num hidden px-3 py-2.5 align-top text-xs leading-5 whitespace-nowrap text-muted @md:table-cell">{formatDay(entry.date)}</td>
                     <td className="min-w-0 px-3 py-2.5 align-top">
@@ -280,8 +325,9 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
                     <td className="p-0 text-right align-middle">
                       <RemoveButton entry={entry} onRemove={remove} />
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
+                </AnimatePresence>
               </tbody>
             </table>
             {entries.length === 0 ? (
@@ -305,16 +351,12 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
             Divisão do mês
           </h2>
           <dl className="mt-3 grid grid-cols-2 divide-x divide-line border-y border-line @lg:grid-cols-4">
-            <Fact label="Renda do mês" value={formatBRL(numbers.income)} />
-            <Fact label="Gasto" value={formatBRL(numbers.burn)} />
-            <Fact label="Guardado" value={formatBRL(numbers.futuro)} />
-            <Fact label="Livre" value={formatBRL(numbers.free)} tone={numbers.free < 0 ? "text-coral" : undefined} />
+            <Fact label="Renda do mês" cents={numbers.income} />
+            <Fact label="Gasto" cents={numbers.burn} />
+            <Fact label="Guardado" cents={numbers.futuro} />
+            <Fact label="Livre" cents={numbers.free} tone={numbers.free < 0 ? "text-coral" : undefined} />
           </dl>
-          {numbers.income <= 0 ? (
-            <p className="sheet-grid mt-4 rounded-lg border border-line px-4 py-3 text-sm leading-relaxed text-muted">
-              Lance primeiro a renda do mês para calcular o plano de cada fatia. Pelo agente, escreva “meu salário é R$ 5.400” ou “vale alimentação de 350 reais”.
-            </p>
-          ) : null}
+          {numbers.income <= 0 ? <IncomeEmpty /> : null}
           <div className="col-label mt-4 hidden grid-cols-[8.5rem_minmax(0,1fr)_6.5rem_6.5rem_6.5rem] gap-x-4 border-b border-line pb-2 uppercase @xl:grid">
             <span>Fatia</span>
             <span>{numbers.income > 0 ? "Da renda" : "Das saídas"}</span>
@@ -330,40 +372,46 @@ export function SheetStage({ sheetId, compact = false }: { sheetId: string; comp
               const diff = plan - used;
               const top = topBySlice(key);
               const ratio = splitBase > 0 ? used / splitBase : 0;
+              const hasIncome = numbers.income > 0;
+              // Passar do plano é ruim em essenciais e estilo. Em futuro, passar do plano é guardar mais.
+              const over = hasIncome && key !== "futuro" && diff < 0;
               return (
                 <li
                   key={key}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1.5 py-3 @xl:grid-cols-[8.5rem_minmax(0,1fr)_6.5rem_6.5rem_6.5rem] @xl:items-center"
+                  className="grid grid-cols-1 gap-y-2.5 py-4 @xl:grid-cols-[8.5rem_minmax(0,1fr)_6.5rem_6.5rem_6.5rem] @xl:items-center @xl:gap-x-4"
                 >
                   <span className="order-1 flex min-w-0 items-center gap-2 text-sm">
                     <span className="size-2 shrink-0 rounded-full" style={{ background: SLICE_COLOR[key] }} aria-hidden="true" />
                     {SLICE_LABEL[key]}
                     <span className="num text-xs text-faint">{percent}%</span>
                   </span>
-                  <span className="num order-2 text-right text-sm @xl:order-3">{formatBRL(used)}</span>
-                  <div className="order-3 col-span-2 @xl:order-2 @xl:col-span-1">
-                    <Bar ratio={ratio} target={percent / 100} color={SLICE_COLOR[key]} delay={index * 0.05} />
+                  <div className="order-2">
+                    <Bar ratio={ratio} target={percent / 100} color={over ? "var(--color-coral)" : SLICE_COLOR[key]} delay={index * 0.06} markerLabel={`plano ${percent}%`} />
                   </div>
-                  <span className="num order-4 text-xs text-muted @xl:text-right @xl:text-sm">
-                    {numbers.income > 0 ? (
-                      <>
-                        <span className="font-sans @xl:hidden">Plano </span>
-                        {formatBRL(plan)}
-                      </>
-                    ) : (
-                      <span className="font-sans @xl:hidden">Plano {percent}% da renda</span>
-                    )}
-                  </span>
-                  {numbers.income > 0 ? (
-                    <span className={`num order-5 text-right text-xs @xl:text-sm ${diff < 0 ? "text-coral" : "text-muted"}`}>
-                      <span className="font-sans @xl:hidden">{diff < 0 ? "Passou " : "Cabe ainda "}</span>
-                      <span className="hidden @xl:inline">{diff < 0 ? "−" : ""}</span>
-                      {formatBRL(Math.abs(diff))}
-                    </span>
-                  ) : (
-                    <span className="order-5 hidden text-right text-sm text-faint @xl:block">—</span>
-                  )}
-                  <p className="order-6 col-span-2 text-xs leading-relaxed text-muted @xl:col-span-4 @xl:col-start-2">
+                  <div className="order-3 grid grid-cols-3 gap-x-3 @xl:contents">
+                    <div className="min-w-0 @xl:order-3 @xl:text-right">
+                      <span className="col-label block uppercase @xl:hidden">Real</span>
+                      <span className="num block text-sm">
+                        <Rolling cents={used} />
+                      </span>
+                    </div>
+                    <div className="min-w-0 @xl:order-4 @xl:text-right">
+                      <span className="col-label block uppercase @xl:hidden">Plano</span>
+                      <span className="num block text-sm text-muted">{hasIncome ? <Rolling cents={plan} /> : `${percent}% da renda`}</span>
+                    </div>
+                    <div className="min-w-0 @xl:order-5 @xl:text-right">
+                      <span className="col-label block uppercase @xl:hidden">{diff < 0 ? "Passou" : "Folga"}</span>
+                      {hasIncome ? (
+                        <span className={`num block text-sm ${diff < 0 ? "text-coral" : "text-mint"}`}>
+                          {diff < 0 ? "−" : ""}
+                          <Rolling cents={Math.abs(diff)} />
+                        </span>
+                      ) : (
+                        <span className="num block text-sm text-faint">—</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="order-6 text-xs leading-relaxed text-muted @xl:col-span-4 @xl:col-start-2">
                     {top.length === 0
                       ? "Nada lançado nesta fatia"
                       : top.map((item, i) => (
@@ -517,7 +565,7 @@ function RemoveButton({ entry, onRemove }: { entry: Entry; onRemove: (entry: Ent
   return (
     <button
       type="button"
-      className="tint inline-flex size-10 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-coral"
+      className="press inline-flex size-10 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-coral"
       aria-label={`Remover ${entry.title}, ${formatBRL(entry.cents)}`}
       title="Remover"
       onClick={() => onRemove(entry)}
@@ -538,17 +586,14 @@ function CategoryList({ items, bucketOfCategory }: { items: { category: string; 
         <p className="sheet-grid mt-3 rounded-lg border border-line px-4 py-3 text-sm text-muted">Sem gastos lançados.</p>
       ) : (
         <ul className="ruled mt-3 border-y border-line">
-          {items.map((item) => (
+          {items.map((item, index) => (
             <li key={item.category} className="py-2.5">
               <div className="flex items-baseline justify-between gap-x-3 text-sm">
                 <span className="min-w-0 [overflow-wrap:anywhere]">{item.category}</span>
                 <span className="num shrink-0 text-muted">{formatBRL(item.cents)}</span>
               </div>
               <div className="mt-1.5 h-1 rounded-full bg-canvas">
-                <div
-                  className="bar-draw h-full rounded-full"
-                  style={{ "--scale": String(item.cents / max), background: SLICE_COLOR[bucketOfCategory(item.category)] } as React.CSSProperties}
-                />
+                <GrowBar className="h-full rounded-full" scale={item.cents / max} delay={index * 0.06} style={{ background: SLICE_COLOR[bucketOfCategory(item.category)] }} />
               </div>
             </li>
           ))}
@@ -559,26 +604,66 @@ function CategoryList({ items, bucketOfCategory }: { items: { category: string; 
 }
 
 // Faixa de totais: rótulo de coluna em cima, número em mono. Vira linhas pautadas quando o espaço aperta.
-function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
+const EXAMPLES = ["meu salário é R$ 5.400", "vale alimentação de 350 reais", "recebi 800 de freelance"];
+
+// Sem renda lançada não há plano por fatia. O estado vazio ensina a frase e preenche o campo do agente.
+function IncomeEmpty() {
   return (
-    <div className="flex min-w-0 items-baseline justify-between gap-3 py-2.5 @lg:block @lg:px-5 @lg:py-3 @lg:first:pl-0">
-      <dt className="col-label uppercase">{label}</dt>
-      <dd className={`num text-lg [overflow-wrap:anywhere] @lg:mt-1 @lg:text-xl @2xl:text-2xl @4xl:text-3xl ${tone}`}>{value}</dd>
+    <div className="mt-4 flex gap-3 rounded-lg border border-violet/40 bg-violet/5 px-4 py-4">
+      <PenLine className="mt-0.5 size-5 shrink-0 text-violet-2" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="text-sm text-ink">Falta a renda do mês.</p>
+        <p className="mt-1 text-sm leading-relaxed text-muted">Com a renda lançada, cada fatia ganha o seu plano e a folga. Toque numa frase para levar ao agente.</p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {EXAMPLES.map((phrase) => (
+            <button
+              key={phrase}
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent(FILL_EVENT, { detail: phrase }))}
+              className="press min-h-10 rounded-md border border-line px-3 text-left text-xs text-ink hover:border-violet-2"
+            >
+              {phrase}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function Bar({ ratio, target, color, delay }: { ratio: number; target: number; color: string; delay: number }) {
-  const reduce = useReducedMotion();
+function Stat({ label, cents, tone }: { label: string; cents: number; tone: string }) {
+  return (
+    <div className="flex min-w-0 items-baseline justify-between gap-3 py-2.5 @lg:block @lg:px-5 @lg:py-3 @lg:first:pl-0">
+      <dt className="col-label uppercase">{label}</dt>
+      <dd className={`num text-lg [overflow-wrap:anywhere] @lg:mt-1 @lg:text-xl @2xl:text-2xl @4xl:text-3xl ${tone}`}>
+        <Rolling cents={cents} />
+      </dd>
+    </div>
+  );
+}
+
+function Bar({ ratio, target, color, delay, markerLabel }: { ratio: number; target: number; color: string; delay: number; markerLabel?: string }) {
+  if (markerLabel) {
+    const at = Math.min(1, Math.max(0, target)) * 100;
+    return (
+      <div className="relative mb-6">
+        <div className="h-2.5 overflow-hidden rounded-full bg-canvas ring-1 ring-line ring-inset">
+          <GrowBar className="h-full rounded-full" scale={ratio} delay={delay} style={{ background: color }} />
+        </div>
+        <span className="pointer-events-none absolute top-[-3px] h-4 w-0.5 -translate-x-1/2 rounded-full bg-ink" style={{ left: `${at}%` }} aria-hidden="true" />
+        <span
+          className={`col-label pointer-events-none absolute top-full mt-1.5 whitespace-nowrap ${at > 80 ? "-translate-x-full" : at < 20 ? "-translate-x-1/4" : "-translate-x-1/2"}`}
+          style={{ left: `${at}%` }}
+          aria-hidden="true"
+        >
+          {markerLabel}
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="relative h-1.5 rounded-full bg-canvas">
-      <motion.div
-        className="h-1.5 rounded-full"
-        style={{ background: color, transformOrigin: "left center" }}
-        initial={reduce ? false : { scaleX: 0 }}
-        animate={{ scaleX: Math.min(1, ratio) }}
-        transition={{ duration: reduce ? 0 : 0.5, delay: reduce ? 0 : delay, ease: easeOut }}
-      />
+      <GrowBar className="h-1.5 rounded-full" scale={ratio} delay={delay} style={{ background: color }} />
       <span className="pointer-events-none absolute top-[-3px] h-3 w-px bg-ink" style={{ left: `${Math.min(100, target * 100)}%` }} aria-hidden="true" />
     </div>
   );
@@ -622,11 +707,13 @@ export function Split({
   );
 }
 
-function Fact({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Fact({ label, cents, tone }: { label: string; cents: number; tone?: string }) {
   return (
     <div className="min-w-0 px-3 py-2 first:pl-0 @lg:px-4">
       <dt className="col-label uppercase">{label}</dt>
-      <dd className={`num mt-0.5 text-sm [overflow-wrap:anywhere] ${tone ?? "text-ink"}`}>{value}</dd>
+      <dd className={`num mt-0.5 text-sm [overflow-wrap:anywhere] ${tone ?? "text-ink"}`}>
+        <Rolling cents={cents} />
+      </dd>
     </div>
   );
 }
@@ -715,7 +802,7 @@ function EntryDialog({
                     key={item}
                     type="button"
                     aria-pressed={category === item}
-                    className={`tint inline-flex min-h-10 items-center rounded-md border px-3 text-xs ${category === item ? "border-violet-2 text-ink" : "border-line text-muted hover:text-ink"}`}
+                    className={`press inline-flex min-h-10 items-center rounded-md border px-3 text-xs ${category === item ? "border-violet-2 text-ink" : "border-line text-muted hover:text-ink"}`}
                     onClick={() => setCategory(item)}
                   >
                     {item}
@@ -737,7 +824,7 @@ function EntryDialog({
             <input className={fieldClass} placeholder="3/12" value={parcel} onChange={(event) => setParcel(event.target.value)} />
           </Field>
         </div>
-        {error ? <p className="text-sm text-coral">{error}</p> : null}
+        {error ? <FormError>{error}</FormError> : null}
         <div className="flex justify-end">
           <Button type="submit">Lançar</Button>
         </div>

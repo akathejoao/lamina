@@ -1,3 +1,6 @@
+// O estado vazio da planilha pede ao agente que preencha o campo de texto com uma frase de exemplo.
+export const FILL_EVENT = "lamina:fill";
+
 export const easeOut = [0.23, 1, 0.32, 1] as const;
 
 export const rise = {

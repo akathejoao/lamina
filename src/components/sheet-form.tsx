@@ -13,6 +13,7 @@ import {
 } from "@/lib/sheets";
 import { KIND_LABEL, type SheetAccent, type SheetCategory, type SheetKind, type SheetSplit, type SliceKey } from "@/lib/types";
 import { Button, Field, fieldClass } from "./ui";
+import { FormError } from "./motion-bits";
 
 const kinds: SheetKind[] = ["mensal", "meta", "continuo"];
 const accents: SheetAccent[] = ["violeta", "menta", "coral", "ambar"];
@@ -253,9 +254,7 @@ export function SheetForm({
         <p className={`mt-2 text-xs ${sum === 100 ? "text-mint" : "text-coral"}`}>Soma {sum}. As três partes fecham em 100.</p>
       </fieldset>
       {error ? (
-        <p className="text-sm text-coral" role="alert">
-          {error}
-        </p>
+        <FormError>{error}</FormError>
       ) : null}
       <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end border-t border-line bg-surface px-5 py-3">
         <Button type="submit">{mode === "create" ? "Criar planilha" : "Salvar"}</Button>

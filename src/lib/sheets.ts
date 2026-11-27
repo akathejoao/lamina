@@ -8,16 +8,16 @@ export const SLICE_LABEL: Record<SliceKey, string> = {
 
 // Cores de dado. O violeta fica só nos botões de ação.
 export const SLICE_COLOR: Record<SliceKey, string> = {
-  essenciais: "#8ec5ff",
-  estilo: "#ff8aa0",
-  futuro: "#b6ffd2",
+  essenciais: "var(--slice-essenciais)",
+  estilo: "var(--slice-estilo)",
+  futuro: "var(--slice-futuro)",
 };
 
 export const ACCENT_COLOR: Record<SheetAccent, string> = {
-  violeta: "#7c5cff",
-  menta: "#b6ffd2",
-  coral: "#ff8aa0",
-  ambar: "#ffc56d",
+  violeta: "var(--accent-violeta)",
+  menta: "var(--accent-menta)",
+  coral: "var(--accent-coral)",
+  ambar: "var(--accent-ambar)",
 };
 
 export const ACCENT_LABEL: Record<SheetAccent, string> = {
